@@ -17,10 +17,9 @@ wartrace/
 │   ├── forms.py               # Authentication forms
 │   ├── urls.py
 │   └── templates/
-│       └── authentication/
-│           ├── login.html
-│           ├── register.html
-│           └── profile.html
+│       ├── login.html
+│       ├── register.html
+│       └── profile.html
 │
 ├── maps/                      # Map visualization app
 │   ├── __init__.py
@@ -30,8 +29,7 @@ wartrace/
 │   ├── views.py               # Map display views
 │   ├── urls.py
 │   └── templates/
-│       └── maps/
-│           └── map.html
+│       └── map.html
 │
 ├── detection/                 # AI detection app
 │   ├── __init__.py
@@ -45,8 +43,7 @@ wartrace/
 │   ├── views.py
 │   ├── urls.py
 │   └── templates/
-│       └── detection/
-│           └── review.html
+│       └── review.html
 │
 ├── content/                   # User-generated content app
 │   ├── __init__.py
@@ -56,10 +53,9 @@ wartrace/
 │   ├── views.py
 │   ├── urls.py
 │   └── templates/
-│       └── content/
-│           ├── annotation-form.html
-│           ├── marker-create.html
-│           └── marker-detail.html
+│       ├── annotation-form.html
+│       ├── marker-create.html
+│       └── marker-detail.html
 │
 ├── static/                    # Static files
 │   ├── css/
@@ -68,7 +64,11 @@ wartrace/
 │   │   └── marker-detail.css
 │   └── images/
 │
-└── media/                     # User uploaded files
-    ├── satellite_images/
-    ├── detections/
-    └── user_uploads/
+├── media/                     # User uploaded files
+│   ├── satellite_images/
+│   ├── detections/
+│   └── user_uploads/
+│
+├── venv/                      # Virtual environment (not tracked in git)
+│
+└── requirements.txt           # Project dependencies

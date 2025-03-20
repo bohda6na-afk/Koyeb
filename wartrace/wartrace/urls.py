@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -25,6 +26,7 @@ urlpatterns = [
     path('maps/', include('maps.urls')),
     path('detection/', include('detection.urls')),
     path('content/', include('content.urls')),
+    path('', RedirectView.as_view(url='/maps/'), name='home'),
 ]
 
 # Serve media files in development

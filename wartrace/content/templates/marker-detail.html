@@ -4,9 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>War Trace Vision - Detail View</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-  <link rel="stylesheet" href="map.css" />
-  <link rel="stylesheet" href="marker-detail.css" />
+  {% load static %}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="{% static 'css/map.css' %}" />
+  <link rel="stylesheet" href="{% static 'css/marker-detail.css' %}" />
 </head>
 <body>
   <div id="mini-map"></div>

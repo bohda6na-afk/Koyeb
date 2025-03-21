@@ -1,0 +1,68 @@
+military_tinder/
+│   db.sqlite3
+│   manage.py
+│   
+├── authentication/       #для реєстрації та входу
+│   ├── migrations/
+│   ├── templates/
+│   │   ├── login.html
+│   │   ├── register.html
+│   ├── admin.py
+│   ├── apps.py
+│   ├── models.py         #модель UserProfile з фото, описом, локацією
+│   ├── views.py          # Реєстрація, вхід, вихід
+│   ├── urls.py
+│   ├── forms.py
+│   ├── __init__.py
+│
+├── profiles/             # для перегляду анкет
+│   ├── migrations/
+│   ├── templates/
+│   │   ├── profile_detail.html
+│   │   ├── profile_list.html
+│   ├── admin.py
+│   ├── apps.py
+│   ├── models.py     #профіль користувача (зв’язок з User)
+│   ├── views.py          # Логіка перегляду анкет
+│   ├── urls.py
+│   ├── forms.py
+│   ├── __init__.py
+│
+├── matches/              # Додаток для свайпів та метчів
+│   ├── migrations/
+│   ├── templates/
+│   │   ├── matches.html
+│   ├── admin.py
+│   ├── apps.py
+│   ├── models.py         # Модель Match для збереження взаємних лайків
+│   ├── views.py          # Логіка свайпів та взаємодії
+│   ├── urls.py
+│   ├── __init__.py
+│
+├── chat/                 # Чат між матчами
+│   ├── migrations/
+│   ├── templates/
+│   │   ├── chat.html
+│   ├── admin.py
+│   ├── apps.py
+│   ├── models.py         # Модель повідомлень у чаті
+│   ├── views.py          # Відправка та отримання повідомлень
+│   ├── urls.py
+│   ├── __init__.py
+│
+├── static/               #файли (CSS, JS, зображення)
+│   ├── css/
+│   │   ├── styles.css
+│   ├── js/
+│   │   ├── tinder.js
+│   ├── images/
+│
+├── media/                # Завантажені зображення профілів
+│   ├── profile_pictures/
+│
+└── military_tinder/         #Основний вигляд проєкту
+    ├── settings.py
+    ├── urls.py
+    ├── wsgi.py
+    ├── asgi.py
+    ├── __init__.py

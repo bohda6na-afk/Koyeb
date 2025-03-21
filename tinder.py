@@ -21,7 +21,6 @@
 #         request_detail.html
 #         volunteer_dashboard.html
 #         military_dashboard.html
-
 # models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser

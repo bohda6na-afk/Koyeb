@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MilitaryTinder - Реєстрація</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="logo">MilitaryTinder</div>
+        </div>
+        
+        <div class="profile-container">
+            <div class="profile-card login-card">
+                <h1>Реєстрація</h1>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="id_username">Логін:</label>
+                        {{ form.username }}
+                        {% if form.username.errors %}
+                            <div class="error-message">{{ form.username.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_first_name">Ім'я:</label>
+                        {{ form.first_name }}
+                        {% if form.first_name.errors %}
+                            <div class="error-message">{{ form.first_name.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_last_name">Прізвище:</label>
+                        {{ form.last_name }}
+                        {% if form.last_name.errors %}
+                            <div class="error-message">{{ form.last_name.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_email">Email:</label>
+                        {{ form.email }}
+                        {% if form.email.errors %}
+                            <div class="error-message">{{ form.email.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_role">Роль:</label>
+                        {{ form.role }}
+                        {% if form.role.errors %}
+                            <div class="error-message">{{ form.role.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_password1">Пароль:</label>
+                        {{ form.password1 }}
+                        {% if form.password1.errors %}
+                            <div class="error-message">{{ form.password1.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_password2">Підтвердження пароля:</label>
+                        {{ form.password2 }}
+                        {% if form.password2.errors %}
+                            <div class="error-message">{{ form.password2.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <button type="submit" class="action-button accept full-width">Зареєструватися</button>
+                </form>
+                
+                <div class="login-links">
+                    <p>Вже є обліковий запис? <a href="{% url 'login' %}">Увійти</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

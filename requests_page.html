@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Військові запити</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background-color: white;
+            min-height: 100vh;
+            position: relative;
+            padding-bottom: 60px;
+        }
+        
+        .header {
+            background-color: #1f5480;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        .search-icon {
+            width: 40px;
+            height: 40px;
+            background-color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        
+        .search-icon svg {
+            width: 24px;
+            height: 24px;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 10px;
+            padding: 15px 20px;
+            background-color: #f0f0f0;
+            border-radius: 20px;
+            margin: 20px;
+        }
+        
+        .filter-label {
+            color: #666;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        
+        .filter-button {
+            padding: 8px 25px;
+            border-radius: 20px;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .filter-active {
+            background-color: #1f5480;
+            color: white;
+        }
+        
+        .filter-inactive {
+            background-color: white;
+            color: #1f5480;
+            border: 1px solid #1f5480;
+        }
+        
+        .request-container {
+            /* This will be populated dynamically */
+        }
+        
+        .request-card {
+            margin: 10px 20px;
+            border-radius: 15px;
+            border: 1px solid #e0e0e0;
+            overflow: hidden;
+        }
+        
+        .request-header {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 15px;
+        }
+        
+        .avatar {
+            width: 50px;
+            height: 50px;
+            background-color: #d9e4ee;
+            border-radius: 50%;
+        }
+        
+        .request-info {
+            flex: 1;
+        }
+        
+        .request-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+        
+        .request-description {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .request-status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .status-urgent {
+            background-color: #ffdfdf;
+            color: #a00000;
+        }
+        
+        .status-progress {
+            background-color: #d9f5f8;
+            color: #006d77;
+        }
+        
+        .status-complete {
+            background-color: #dcf1e7;
+            color: #2a9d8f;
+        }
+        
+        .request-footer {
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .date-replies {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .status-button {
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: none;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .active-button {
+            background-color: #1f5480;
+        }
+        
+        .progress-button {
+            background-color: #3182a0;
+        }
+        
+        .completed-button {
+            background-color: #5f6769;
+        }
+        
+        .bottom-nav {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .nav-button {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        
+        .add-button {
+            width: 60px;
+            height: 60px;
+            background-color: #1f5480;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 30px;
+            margin-top: -20px;
+            cursor: pointer;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            overflow: auto;
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 400px;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        
+        .close-button {
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        .modal-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .form-group label {
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .submit-button {
+            padding: 10px;
+            background-color: #1f5480;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .search-modal {
+            display: none;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+        
+        .search-container {
+            background-color: white;
+            padding: 20px;
+            width: 100%;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Запити</h1>
+            <div class="search-icon" id="searchButton">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <span class="filter-label">Фільтри:</span>
+            <button class="filter-button filter-active" id="allFilter">Усі</button>
+            <button class="filter-button filter-inactive" id="newFilter">Нові</button>
+        </div>
+        
+        <div id="requestContainer" class="request-container">
+            <!-- Requests will be dynamically added here -->
+        </div>
+        
+        <div class="bottom-nav">
+            <div class="nav-button" id="homeButton">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a0a0a0" stroke-width="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+            </div>
+            <div class="add-button" id="addButton">+</div>
+            <div class="nav-button" id="profileButton">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a0a0a0" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Request Modal -->
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Додати новий запит</h3>
+                <span class="close-button" id="closeAddModal">&times;</span>
+            </div>
+            <form class="modal-form" id="newRequestForm">
+                <div class="form-group">
+                    <label for="requestTitle">Назва запиту</label>
+                    <input type="text" id="requestTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="requestDescription">Опис потреби</label>
+                    <textarea id="requestDescription" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="requestPriority">Пріоритет</label>
+                    <select id="requestPriority">
+                        <option value="normal">Звичайний</option>
+                        <option value="urgent">Терміново</option>
+                    </select>
+                </div>
+                <button type="submit" class="submit-button">Створити запит</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Search Modal -->
+    <div id="searchModal" class="search-modal">
+        <div class="search-container">
+            <input type="text" class="search-input" id="searchInput" placeholder="Пошук запитів...">
+            <button class="status-button active-button" id="closeSearchModal">Закрити</button>
+        </div>
+    </div>
+    
+    <script>
+        // Sample data - this would come from a database in a real application
+        let requests = [
+            {
+                id: 1,
+                title: "Зразок запиту 1",
+                description: "Потреба: зразок запиту 1",
+                status: "urgent",
+                statusText: "Терміново",
+                date: "12.03.2025",
+                replies: 1,
+                state: "active"
+            },
+            {
+                id: 2,
+                title: "Зразок запиту 2",
+                description: "Потреба: зразок запиту 2",
+                status: "progress",
+                statusText: "Зібрано 40%",
+                date: "10.03.2025",
+                replies: 5,
+                state: "progress"
+            },
+            {
+                id: 3,
+                title: "Зразок запиту 3",
+                description: "Потреба: зразок запиту 3",
+                status: "complete",
+                statusText: "Виконано",
+                date: "06.03.2025",
+                replies: 2,
+                state: "completed"
+            }
+        ];
+        
+        // DOM Elements
+        const requestContainer = document.getElementById('requestContainer');
+        const addButton = document.getElementById('addButton');
+        const addModal = document.getElementById('addModal');
+        const closeAddModal = document.getElementById('closeAddModal');
+        const newRequestForm = document.getElementById('newRequestForm');
+        const allFilter = document.getElementById('allFilter');
+        const newFilter = document.getElementById('newFilter');
+        const searchButton = document.getElementById('searchButton');
+        const searchModal = document.getElementById('searchModal');
+        const closeSearchModal = document.getElementById('closeSearchModal');
+        const searchInput = document.getElementById('searchInput');
+        const homeButton = document.getElementById('homeButton');
+        const profileButton = document.getElementById('profileButton');
+        
+        // Functions
+        function renderRequests(requestsToRender) {
+            requestContainer.innerHTML = '';
+            
+            requestsToRender.forEach(request => {
+                const requestCard = document.createElement('div');
+                requestCard.className = 'request-card';
+                requestCard.dataset.id = request.id;
+                
+                // Get button class and text based on state
+                let buttonClass, buttonText;
+                switch (request.state) {
+                    case 'active':
+                        buttonClass = 'active-button';
+                        buttonText = 'Активне';
+                        break;
+                    case 'progress':
+                        buttonClass = 'progress-button';
+                        buttonText = 'У процесі';
+                        break;
+                    case 'completed':
+                        buttonClass = 'completed-button';
+                        buttonText = 'Виконано';
+                        break;
+                }
+                
+                requestCard.innerHTML = `
+                    <div class="request-header">
+                        <div class="avatar"></div>
+                        <div class="request-info">
+                            <h3 class="request-title">${request.title}</h3>
+                            <p class="request-description">${request.description}</p>
+                            <span class="request-status status-${request.status}">${request.statusText}</span>
+                        </div>
+                    </div>
+                    <div class="request-footer">
+                        <div class="date-replies">
+                            ${request.date} &nbsp;&nbsp; Відгуки: ${request.replies}
+                        </div>
+                        <button class="status-button ${buttonClass}" data-id="${request.id}" data-state="${request.state}">${buttonText}</button>
+                    </div>
+                `;
+                
+                requestContainer.appendChild(requestCard);
+            });
+            
+            // Add event listeners to the status buttons
+            document.querySelectorAll('.status-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    const currentState = this.dataset.state;
+                    updateRequestState(id, currentState);
+                });
+            });
+        }
+        
+        function updateRequestState(id, currentState) {
+            // Find the request
+            const requestIndex = requests.findIndex(req => req.id == id);
+            if (requestIndex === -1) return;
+            
+            // Update state based on current state
+            let newState;
+            if (currentState === 'active') {
+                newState = 'progress';
+                requests[requestIndex].state = 'progress';
+                requests[requestIndex].status = 'progress';
+                requests[requestIndex].statusText = 'Зібрано 0%';
+            } else if (currentState === 'progress') {
+                newState = 'completed';
+                requests[requestIndex].state = 'completed';
+                requests[requestIndex].status = 'complete';
+                requests[requestIndex].statusText = 'Виконано';
+            } else {
+                // If completed, revert to active
+                newState = 'active';
+                requests[requestIndex].state = 'active';
+                requests[requestIndex].status = 'urgent';
+                requests[requestIndex].statusText = 'Терміново';
+            }
+            
+            // Re-render requests
+            renderRequests(requests);
+        }
+        
+        function addRequest(title, description, priority) {
+            const now = new Date();
+            const formattedDate = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
+            
+            const newRequest = {
+                id: requests.length + 1,
+                title: title,
+                description: `Потреба: ${description}`,
+                status: priority === 'urgent' ? 'urgent' : 'normal',
+                statusText: priority === 'urgent' ? 'Терміново' : 'Звичайний',
+                date: formattedDate,
+                replies: 0,
+                state: 'active'
+            };
+            
+            requests.unshift(newRequest);
+            renderRequests(requests);
+        }
+        
+        function searchRequests(query) {
+            if (!query.trim()) {
+                renderRequests(requests);
+                return;
+            }
+            
+            const filteredRequests = requests.filter(request => 
+                request.title.toLowerCase().includes(query.toLowerCase()) ||
+                request.description.toLowerCase().includes(query.toLowerCase())
+            );
+            
+            renderRequests(filteredRequests);
+        }
+        
+        // Event Listeners
+        addButton.addEventListener('click', function() {
+            addModal.style.display = 'block';
+        });
+        
+        closeAddModal.addEventListener('click', function() {
+            addModal.style.display = 'none';
+        });
+        
+        window.addEventListener('click', function(event) {
+            if (event.target === addModal) {
+                addModal.style.display = 'none';
+            }
+            if (event.target === searchModal) {
+                searchModal.style.display = 'none';
+            }
+        });
+        
+        newRequestForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const title = document.getElementById('requestTitle').value;
+            const description = document.getElementById('requestDescription').value;
+            const priority = document.getElementById('requestPriority').value;
+            
+            addRequest(title, description, priority);
+            
+            // Reset form and close modal
+            newRequestForm.reset();
+            addModal.style.display = 'none';
+        });
+        
+        allFilter.addEventListener('click', function() {
+            allFilter.className = 'filter-button filter-active';
+            newFilter.className = 'filter-button filter-inactive';
+            renderRequests(requests);
+        });
+        
+        newFilter.addEventListener('click', function() {
+            allFilter.className = 'filter-button filter-inactive';
+            newFilter.className = 'filter-button filter-active';
+            const newRequests = requests.filter(req => req.state === 'active');
+            renderRequests(newRequests);
+        });
+        
+        searchButton.addEventListener('click', function() {
+            searchModal.style.display = 'block';
+            searchInput.focus();
+        });
+        
+        closeSearchModal.addEventListener('click', function() {
+            searchModal.style.display = 'none';
+            searchInput.value = '';
+            renderRequests(requests);
+        });
+        
+        searchInput.addEventListener('input', function() {
+            searchRequests(this.value);
+        });
+        
+        homeButton.addEventListener('click', function() {
+            // Home functionality - reset to all requests
+            allFilter.click();
+        });
+        
+        profileButton.addEventListener('click', function() {
+            // Profile functionality - would link to profile page
+            alert('Перехід до профілю користувача');
+        });
+        
+        // Initial render
+        renderRequests(requests);
+    </script>
+</body>
+</html>

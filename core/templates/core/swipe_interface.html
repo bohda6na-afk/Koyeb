@@ -1,0 +1,269 @@
+
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MilitaryTinder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .app-container {
+            width: 100%;
+            max-width: 380px;
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+            background-color: white;
+        }
+        
+        .menu-icon, .settings-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        
+        .logo {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .profile-container {
+            padding: 15px;
+            flex-grow: 1;
+            position: relative;
+            background-color: #f9f9f9;
+        }
+        
+        .location-tag {
+            background-color: #e0e0e0;
+            color: #333;
+            padding: 4px 12px;
+            border-radius: 20px;
+            display: inline-block;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .profile-photo-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .profile-photo {
+            width: 120px;
+            height: 120px;
+            background-color: #e0e0e0;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #777;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .check-icon {
+            position: absolute;
+            right: 130px;
+            top: 0;
+            width: 32px;
+            height: 32px;
+            background-color: #2196f3;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .profile-card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .name {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .occupation {
+            font-size: 16px;
+            color: #555;
+            margin-bottom: 15px;
+        }
+        
+        .description {
+            text-align: center;
+            margin-bottom: 15px;
+            line-height: 1.4;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .urgency {
+            background-color: #f0f0f0;
+            color: #333;
+            padding: 4px 12px;
+            border-radius: 20px;
+            display: inline-block;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin: 5px auto;
+        }
+        
+        .action-buttons {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            background-color: white;
+        }
+        
+        .action-button {
+            padding: 10px 15px;
+            border-radius: 30px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+        }
+        
+        .decline {
+            background-color: #9e9e9e;
+            color: white;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .more-info {
+            background-color: #3f51b5;
+            color: white;
+        }
+        
+        .accept {
+            background-color: #4caf50;
+            color: white;
+        }
+        
+        .bottom-nav {
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #eee;
+            padding: 12px 15px;
+            background-color: white;
+        }
+        
+        .nav-item {
+            width: 32px;
+            height: 32px;
+            background-color: #f0f0f0;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        .nav-center {
+            background-color: #546e7a;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="menu-icon">≡</div>
+            <div class="logo">MilitaryTinder</div>
+            <div class="settings-icon">⚙</div>
+        </div>
+        
+        <div class="profile-container">
+            <div class="location-tag" id="location">{{ help_request.location }}</div>
+            
+            <div class="profile-photo-container">
+                <div class="profile-photo">фото</div>
+                <div class="check-icon">✓</div>
+            </div>
+            
+            <div class="profile-card">
+                <h1 class="name" id="userName">{{ help_request.requester.first_name }}</h1>
+                <div class="occupation" id="userOccupation">{{ help_request.help_type }}</div>
+                
+                <div class="description" id="userDescription">
+                    {{ help_request.description }}
+                </div>
+                
+                <div class="urgency" id="urgencyLevel">{{ help_request.get_urgency_display }}</div>
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <button class="action-button decline">✕</button>
+            <button class="action-button more-info">Більше інформації</button>
+            <button class="action-button accept">Беруся</button>
+        </div>
+        
+        <div class="bottom-nav">
+            <div class="nav-item">👨</div>
+            <div class="nav-item nav-center">🔍</div>
+            <div class="nav-item">👤</div>
+        </div>
+    </div>
+
+    <script>
+        // Просте демо-функціонування кнопок
+        document.querySelector('.decline').addEventListener('click', function() {
+            alert('Відхилено');
+        });
+        
+        document.querySelector('.more-info').addEventListener('click', function() {
+            alert('Відкриваємо більше інформації');
+        });
+        
+        document.querySelector('.accept').addEventListener('click', function() {
+            alert('Прийнято! Відправляємо повідомлення...');
+        });
+    </script>
+</body>
+</html>

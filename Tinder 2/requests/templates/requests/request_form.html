@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MilitaryTinder - {% if form.instance.id %}Редагувати{% else %}Створити{% endif %} запит</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="menu-icon" onclick="history.back()">←</div>
+            <div class="logo">{% if form.instance.id %}Редагувати{% else %}Створити{% endif %} запит</div>
+            <div class="settings-icon"></div>
+        </div>
+        
+        <div class="profile-container">
+            <div class="profile-card">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="form-group">
+                        <label for="id_title">Назва запиту:</label>
+                        {{ form.title }}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_location">Місцезнаходження:</label>
+                        {{ form.location }}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_urgency">Терміновість:</label>
+                        {{ form.urgency }}
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_description">Опис:</label>
+                        {{ form.description }}
+                    </div>
+                    
+                    <button type="submit" class="action-button accept full-width">
+                        {% if form.instance.id %}Оновити{% else %}Створити{% endif %} запит
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="bottom-nav">
+            <div class="nav-item" onclick="location.href='{% url 'match_list' %}'">👨</div>
+            <div class="nav-item nav-center" onclick="location.href='{% url 'request_list' %}'">📋</div>
+            <div class="nav-item" onclick="location.href='{% url 'profile_detail' user.profile.id %}'">👤</div>
+        </div>
+    </div>
+</body>
+</html>

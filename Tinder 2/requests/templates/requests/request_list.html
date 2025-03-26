@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MilitaryTinder - Запити</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="menu-icon" onclick="location.href='{% url 'profile_list' %}'">≡</div>
+            <div class="logo">Запити</div>
+            <div class="settings-icon" onclick="location.href='{% url 'profile_edit' %}'">⚙</div>
+        </div>
+        
+        <div class="profile-container">
+            {% if user.profile.role == 'military' %}
+                <div class="new-request-button">
+                    <button class="action-button accept full-width" onclick="location.href='{% url 'create_request' %}'">
+                        Створити новий запит
+                    </button>
+                </div>
+            {% endif %}
+            
+            {% if requests %}
+                <div class="requests-list">
+                    {% for request in requests %}
+                        <div class="request-card" onclick="location.href='{% url 'request_detail' request.id %}'">
+                            <div class="request-header">
+                                <h2>{{ request.title }}</h2>
+                                <div class="urgency-tag {{ request.urgency }}">{{ request.get_urgency_display }}</div>
+                            </div>
+                            
+                            <div class="request-info">
+                                <div class="location-info">
+                                    <span class="location-icon">📍</span>
+                                    <span>{{ request.location }}</span>
+                                </div>
+                                <div class="status-info {{ request.status }}">
+                                    {{ request.get_status_display }}
+                                </div>
+                            </div>
+                            
+                            <div class="request-description">
+                                {{ request.description|truncatechars:100 }}
+                            </div>
+                            
+                            <div class="request-actions">
+                                {% if user.profile.role == 'volunteer' %}
+                                    <button class="action-button accept" onclick="handleLikeRequest({{ request.id }}, event)">
+                                        Беруся
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="no-requests">
+                    <p>Запитів поки немає.</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="bottom-nav">
+            <div class="nav-item" onclick="location.href='{% url 'match_list' %}'">👨</div>
+            <div class="nav-item nav-center" onclick="location.href='{% url 'request_list' %}'">📋</div>
+            <div class="nav-item" onclick="location.href='{% url 'profile_detail' user.profile.id %}'">👤</div>
+        </div>
+    </div>
+
+    <script>
+        // Handle like request action
+        function handleLikeRequest(requestId, event) {
+            event.stopPropagation(); // Prevent click from bubbling to parent
+            
+            fetch(`/matches/like/request/${requestId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.match_created) {
+                    alert('Ви отримали метч! Тепер ви можете спілкуватися.');
+                    window.location.href = '{% url 'match_list' %}';
+                } else {
+                    alert('Запит відправлено!');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>

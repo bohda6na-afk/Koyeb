@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MilitaryTinder</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="menu-icon" onclick="location.href='{% url 'profile_list' %}'">≡</div>
+            <div class="logo">MilitaryTinder</div>
+            <div class="settings-icon" onclick="location.href='{% url 'profile_edit' %}'">⚙</div>
+        </div>
+        
+        <div class="profile-container">
+            <div class="location-tag" id="location">{{ profile.location }}</div>
+            
+            <div class="profile-photo-container">
+                {% if profile.profile_picture %}
+                    <img src="{{ profile.profile_picture.url }}" alt="{{ profile.user.get_full_name }}" class="profile-photo">
+                {% else %}
+                    <div class="profile-photo">фото</div>
+                {% endif %}
+                
+                {% if profile.verified %}
+                    <div class="check-icon">✓</div>
+                {% endif %}
+            </div>
+            
+            <div class="profile-card">
+                <h1 class="name" id="userName">{{ profile.user.get_full_name }}</h1>
+                <div class="occupation" id="userOccupation">{{ profile.get_role_display }}</div>
+                
+                <div class="description" id="userDescription">
+                    {{ profile.bio }}
+                </div>
+                
+                {% if profile.role == 'military' and request %}
+                    <div class="urgency" id="urgencyLevel">{{ request.get_urgency_display }}</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <button class="action-button decline" onclick="handleDecline()">✕</button>
+            <button class="action-button more-info" onclick="location.href='{% url 'profile_detail' profile.id %}'">Більше інформації</button>
+            <button class="action-button accept" onclick="handleLike({{ profile.id }})">Беруся</button>
+        </div>
+        
+        <div class="bottom-nav">
+            <div class="nav-item" onclick="location.href='{% url 'match_list' %}'">👨</div>
+            <div class="nav-item nav-center" onclick="location.href='{% url 'swipe_profiles' %}'">🔍</div>
+            <div class="nav-item" onclick="location.href='{% url 'profile_detail' user.profile.id %}'">👤</div>
+        </div>
+    </div>
+
+    <script>
+        // Handle like action
+        function handleLike(profileId) {
+            fetch(`/matches/like/profile/${profileId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.match_created) {
+                    alert('Ви отримали метч! Тепер ви можете спілкуватися.');
+                    window.location.href = '{% url 'match_list' %}';
+                } else {
+                    alert('Запит відправлено!');
+                    window.location.href = '{% url 'swipe_profiles' %}';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        // Handle decline action
+        function handleDecline() {
+            window.location.href = '{% url 'swipe_profiles' %}';
+        }
+    </script>
+</body>
+</html>

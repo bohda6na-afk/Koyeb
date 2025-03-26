@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MilitaryTinder - Чат з {{ other_user.user.get_full_name }}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="menu-icon" onclick="location.href='{% url 'chat_list' %}'">←</div>
+            <div class="user-info">
+                <div class="chat-user-name">{{ other_user.user.get_full_name }}</div>
+                <div class="chat-user-role">{{ other_user.get_role_display }}</div>
+            </div>
+            <div class="profile-icon" onclick="location.href='{% url 'profile_detail' other_user.id %}'">👤</div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="messages" id="messages-container">
+                {% for message in messages %}
+                    <div class="message {% if message.sender == user.profile %}sent{% else %}received{% endif %}">
+                        <div class="message-content">{{ message.content }}</div>
+                        <div class="message-time">{{ message.created_at|date:"H:i" }}</div>
+                    </div>
+                {% endfor %}
+            </div>
+            
+            <div class="message-form">
+                <form method="post" id="message-form">
+                    {% csrf_token %}
+                    <div class="message-input">
+                        {{ form.content }}
+                    </div>
+                    <button type="submit" class="send-button">📤</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="bottom-nav">
+            <div class="nav-item" onclick="location.href='{% url 'match_list' %}'">👨</div>
+            <div class="nav-item nav-center" onclick="location.href='{% url 'chat_list' %}'">💬</div>
+            <div class="nav-item" onclick="location.href='{% url 'profile_detail' user.profile.id %}'">👤</div>
+        </div>
+    </div>
+
+    <script>
+        // Scroll to bottom of messages on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const messagesContainer = document.getElementById('messages-container');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        });
+        
+        // Submit form with AJAX
+        document.getElementById('message-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const form = this;
+            const formData = new FormData(form);
+            
+            fetch('', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Add new message to chat
+                    const messagesContainer = document.getElementById('messages-container');
+                    const messageDiv = document.createElement('div');
+                    messageDiv.classList.add('message', 'sent');
+                    
+                    messageDiv.innerHTML = `
+                        <div class="message-content">${data.message.content}</div>
+                        <div class="message-time">${data.message.created_at}</div>
+                    `;
+                    
+                    messagesContainer.appendChild(messageDiv);
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    
+                    // Clear form
+                    form.reset();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+    </script>
+</body>
+</html>

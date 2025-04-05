@@ -28,6 +28,7 @@
             </div>
         </div>
 
+        {% if request_form %}
         <div id="add-request-form-container">
             <h2>Form to add new request</h2>
             <form method="post">
@@ -36,6 +37,7 @@
                 <button type="submit">Add Request</button>
             </form>
         </div>
+        {% endif %}
     </aside>
 
     <main>
@@ -53,10 +55,10 @@
                 </thead>
                 {% for req in request_data %}
                 <tbody>
-                    <th>{{ req.name }}</th>
-                    <th>{{ req.description }}</th>
-                    <th>{{ req.aproximate_price }}</th>
-                    <th>{{ req.status }}</th>
+                    <td>{{ req.name }}</td>
+                    <td>{{ req.description }}</td>
+                    <td>{{ req.aproximate_price }}</td>
+                    <td>{{ req.status }}</td>
                 </tbody>
                 {% endfor %}
             </table>
@@ -79,7 +81,7 @@
     <div class="bottom-menu">
         <a href="{% url 'map' %}">Карта 🔥</a>
         {% if not request_form %}
-        <a href="{% url 'personal_page' %}">Особиста сторінка 👤</a>
+        <a href="{% url 'search' %}">Шукати нові збори 👤</a>
         {% endif %}
     </div>
 </body>

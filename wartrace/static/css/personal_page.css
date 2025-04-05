@@ -267,6 +267,9 @@ main form[action*="logout"] button[type="submit"]:hover {
 
 /* Bottom Menu */
 .bottom-menu {
+    position: sticky;
+    bottom: 0;
+    width: 100%;
     grid-area: footer;
     background-color: #333;
     color: white;
@@ -310,6 +313,11 @@ main form[action*="logout"] button[type="submit"]:hover {
 }
 
 .archive-section th {
+    background-color: #89cff7;
+    font-weight: bold;
+}
+
+.archive-section tr {
     background-color: #f0f0f0;
     font-weight: bold;
 }

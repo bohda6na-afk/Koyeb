@@ -79,7 +79,7 @@ def personal_page(request):
                 }
                 user_profile.set_contacts(contacts)
                 user_profile.save()
-                return redirect('personal_page')
+                return redirect('personal_page')    
 
     return render(request, 'personal_page.html', {'contacts': contacts, 'request_data': request_data, 'request_form': request_form, 'contact_form': contact_form, 'my_markes': my_markers})
 

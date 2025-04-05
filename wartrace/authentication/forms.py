@@ -4,13 +4,31 @@ from .models import UserProfile
 import json
 
 class UserRegistrationForm(forms.ModelForm):
-    password = forms.CharField(widget=forms.PasswordInput)
-    password2 = forms.CharField(label='Confirm Password', widget=forms.PasswordInput)
-    category = forms.ChoiceField(choices=UserProfile.CATEGORY_CHOICES) #add category
+    password = forms.CharField(widget=forms.PasswordInput(attrs={'placeholder': 'Пароль'}), help_text='Пароль')
+    password2 = forms.CharField(label='Confirm Password', widget=forms.PasswordInput(attrs={'placeholder': 'Повторіть пароль'}), help_text='Повторіть пароль')
+    category = forms.ChoiceField(choices=UserProfile.CATEGORY_CHOICES, help_text='Виберіть категорію') #add category
 
     class Meta:
         model = User
         fields = ('username', 'email', 'first_name', 'last_name')
+        widgets = {
+            'username' : forms.TextInput(attrs={'placeholder':"Ім'я користувача"}),
+            'email': forms.TextInput(attrs={'placeholder':"Введіть ваш email"}),
+            'first_name': forms.TextInput(attrs={'placeholder':"Ваше ім'я"}),
+            'last_name': forms.TextInput(attrs={'placeholder':"Ваше прізвище"}),
+        }
+        help_texts = {
+            'username': "Ваше ім'я користувача",
+            'email': "Введіть ваш email",
+            'first_name': "Ваше ім'я",
+            'last_name': "Ваше прізвище",
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in self.Meta.fields:
+            self.fields[field_name].required = True
+        self.fields['category'].required = True
 
     def clean_password2(self):
         cd = self.cleaned_data

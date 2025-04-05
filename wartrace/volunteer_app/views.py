@@ -17,7 +17,7 @@ def accept_request(request, request_id):
     request_obj.status = "in_progress"
     request_obj.save()
     VolunteerViewedRequest.objects.get_or_create(user=user_profile, req=request_obj)
-    return redirect('chat')
+    return redirect('search')
 
 @login_required
 @volunteer

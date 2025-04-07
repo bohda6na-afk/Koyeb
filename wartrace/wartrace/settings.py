@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'maps',
     'detection',
     'content',
+    'volunteer_app'
 ]
 
 MIDDLEWARE = [

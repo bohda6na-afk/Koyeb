@@ -1,23 +1,19 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .forms import UserRegistrationForm, RequestForm, ContactForm #import ContactForm
+from .forms import UserRegistrationForm, ContactForm 
+from volunteer_app.forms import RequestForm
+from volunteer_app.models import Request
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import login, authenticate
-from django.contrib.auth.models import User
-from .models import UserProfile
-from django.utils.http import urlsafe_base64_decode
-from django.utils.encoding import force_str
-from django.contrib.auth.tokens import default_token_generator
-import json
-import uuid
-from datetime import datetime
+from authentication.decorators import login_required
 
+from .models import UserProfile
 def register(request):
     if request.method == 'POST':
         form = UserRegistrationForm(request.POST)
         if form.is_valid():
             user = form.save()
             login(request, user) #login the user after registration
-            return redirect('registration_success')  # Redirect to a success page
+            return redirect('personal_page')  # Redirect to a success page
     else:
         form = UserRegistrationForm()
     return render(request, 'registration/register.html', {'form': form})
@@ -35,12 +31,12 @@ def user_login(request):
             if user is not None:
                 login(request, user)
                 return redirect('personal_page') #redirect on success
-            else:
-                return render(request, 'registration/login.html', {'form': form, 'error': 'Invalid Credentials'}) #handle error
+            return render(request, 'registration/login.html', {'form': form, 'error': 'Invalid Credentials'}) #handle error
     else:
         form = AuthenticationForm()
     return render(request, 'registration/login.html', {'form': form})
 
+@login_required
 def personal_page(request):
     if not request.user.is_authenticated:
         return redirect('login')
@@ -48,28 +44,23 @@ def personal_page(request):
     user_profile = request.user.profile
 
     contacts = user_profile.get_contacts()
-    request_data = user_profile.get_request_data()
+    request_data = user_profile.requests.all() if user_profile.category == 'soldier' else user_profile.volunteer_req.all()
     request_form = RequestForm() if user_profile.category == 'soldier' else None
     contact_form = ContactForm(initial={
         'phone': contacts.get('phone', ''),
         'socials_title': contacts.get('socials', {}).get('title', ''),
         'socials_link': contacts.get('socials', {}).get('link', ''),
     })
+    my_markers = None # TODO
 
     if request.method == 'POST':
-        if 'title' in request.POST:  # Request Form submitted
+        if 'name' in request.POST:  # Request Form submitted
             request_form = RequestForm(request.POST)
             if request_form.is_valid():
-                request_id = str(uuid.uuid4())
-                request_entry = {
-                    'title': request_form.cleaned_data['title'],
-                    'description': request_form.cleaned_data['description'],
-                    'deadline': request_form.cleaned_data['deadline'].strftime('%d/%m/%Y'),
-                    'approximate_price': request_form.cleaned_data['approximate_price'],
-                }
-                request_data[request_id] = request_entry
-                user_profile.set_request_data(request_data)
-                user_profile.save()
+                req_obj = request_form.save(commit=False)
+                req_obj.status = 'in_search'
+                req_obj.author = user_profile
+                req_obj.save()
                 return redirect('personal_page')
         else: # Contact Form submitted
             contact_form = ContactForm(request.POST)
@@ -81,6 +72,22 @@ def personal_page(request):
                 }
                 user_profile.set_contacts(contacts)
                 user_profile.save()
-                return redirect('personal_page')
+                return redirect('personal_page')    
 
-    return render(request, 'personal_page.html', {'contacts': contacts, 'request_data': request_data, 'request_form': request_form, 'contact_form': contact_form})
+    return render(request, 'personal_page.html', {'contacts': contacts, 'request_data': request_data, 'request_form': request_form, 'contact_form': contact_form, 'my_markes': my_markers})
+
+def bad_category(request):
+    return render(request, 'bad_category.html')
+
+def profile(request, volunteer_id):
+    user_profile = UserProfile.objects.get(id=volunteer_id)
+    req_data = user_profile.requests.all() if user_profile.category == 'soldier' else user_profile.volunteer_req.all()
+    return render(request, 'profile.html', {'user':user_profile.user, 'contacts':user_profile.get_contacts(), 'request_data': req_data})
+
+def req_ready(request, req_id):
+    req = Request.objects.get(id=req_id)
+    if request.user.profile != req.author:
+        return render(request, 'bad_category.html')
+    req.status = 'done'
+    req.save()
+    return redirect('personal_page')

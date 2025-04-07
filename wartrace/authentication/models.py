@@ -9,19 +9,10 @@ class UserProfile(models.Model):
         ('volunteer', 'Volunteer'),
     ]
     category = models.CharField(max_length=9, choices=CATEGORY_CHOICES, blank=True, null=True)
-    request_data = models.TextField(blank=True, null=True)
     contacts = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return self.user.username
-
-    def get_request_data(self):
-        if self.request_data:
-            return json.loads(self.request_data)
-        return {}
-
-    def set_request_data(self, data):
-        self.request_data = json.dumps(data)
+        return str(self.user.username)
 
     def get_contacts(self):
         if self.contacts:

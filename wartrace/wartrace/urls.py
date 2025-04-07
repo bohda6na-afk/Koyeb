@@ -26,6 +26,7 @@ urlpatterns = [
     path('maps/', include('maps.urls')),
     path('detection/', include('detection.urls')),
     path('content/', include('content.urls')),
+    path('search/', include('volunteer_app.urls'), name='search'),
     path('', RedirectView.as_view(url='/maps/'), name='home'),
 ]
 

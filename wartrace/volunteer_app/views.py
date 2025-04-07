@@ -5,7 +5,7 @@ from authentication.decorators import login_required, volunteer
 @login_required
 @volunteer
 def request_list(request):
-    current_request = Request.objects.exclude(viewed_requests__user=request.user.profile).first()
+    current_request = Request.objects.filter(status='in_search').exclude(viewed_requests__user=request.user.profile, volunteer=None).first()
     return render(request, 'volunteer_app/request_list.html', {'current_request': current_request})
 
 @login_required

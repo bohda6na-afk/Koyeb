@@ -19,6 +19,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('category', models.CharField(blank=True, choices=[('soldier', 'Soldier'), ('volunteer', 'Volunteer')], max_length=9, null=True)),
+                ('request_data', models.TextField(blank=True, null=True)),
                 ('contacts', models.TextField(blank=True, null=True)),
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='profile', to=settings.AUTH_USER_MODEL)),
             ],

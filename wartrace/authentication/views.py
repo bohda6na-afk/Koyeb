@@ -5,15 +5,8 @@ from volunteer_app.models import Request
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import login, authenticate
 from authentication.decorators import login_required
-from django.contrib.auth.models import User
-from .models import UserProfile
-from django.utils.http import urlsafe_base64_decode
-from django.utils.encoding import force_str
-from django.contrib.auth.tokens import default_token_generator
-import json
-import uuid
-from datetime import datetime
 
+from .models import UserProfile
 def register(request):
     if request.method == 'POST':
         form = UserRegistrationForm(request.POST)
@@ -85,3 +78,16 @@ def personal_page(request):
 
 def bad_category(request):
     return render(request, 'bad_category.html')
+
+def profile(request, volunteer_id):
+    user_profile = UserProfile.objects.get(id=volunteer_id)
+    req_data = user_profile.requests.all() if user_profile.category == 'soldier' else user_profile.volunteer_req.all()
+    return render(request, 'profile.html', {'user':user_profile.user, 'contacts':user_profile.get_contacts(), 'request_data': req_data})
+
+def req_ready(request, req_id):
+    req = Request.objects.get(id=req_id)
+    if request.user.profile != req.author:
+        return render(request, 'bad_category.html')
+    req.status = 'done'
+    req.save()
+    return redirect('personal_page')

@@ -13,4 +13,6 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(next_page=reverse_lazy('login')), name='logout'), #add logout
     path('personal/', views.personal_page, name='personal_page'),
     path('bad_category/', views.bad_category, name='bad_category'),
+    path('profile/<int:volunteer_id>', views.profile, name='profile'),
+    path('submit/<int:req_id>', views.req_ready, name="req_ready")
 ]

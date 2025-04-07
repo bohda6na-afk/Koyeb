@@ -7,7 +7,7 @@
 </head>
 <body>
     <header>
-        <h1>Welcome, {{ user.username }}!</h1>
+        <h1>{{ user.first_name }} {{ user.last_name }}</h1>
         <p>{{ user.profile.get_category_display }}</p>
         <p>{{ user.email }}</p>
     </header>
@@ -18,26 +18,8 @@
             <p>Email: {{ user.email }}</p>
             <p>Tel: {{ contacts.phone|default:"Not provided" }}</p>
             <p>Social: {% if contacts.socials.title and contacts.socials.link %}<a href="{{ contacts.socials.link }}">{{ contacts.socials.title }}</a>{% else %}Not provided{% endif %}</p>
-            <button id="editContacts">Edit</button>
-            <div id="contactForm" style="display: none;">
-                <form method="post">
-                    {% csrf_token %}
-                    {{ contact_form.as_p }}
-                    <button type="submit">Save Contacts</button>
-                </form>
-            </div>
         </div>
 
-        {% if request_form %}
-        <div id="add-request-form-container">
-            <h2>Form to add new request</h2>
-            <form method="post">
-                {% csrf_token %}
-                {{ request_form.as_p }}
-                <button type="submit">Add Request</button>
-            </form>
-        </div>
-        {% endif %}
     </aside>
 
     <main>
@@ -70,22 +52,12 @@
             <p>No requests yet.</p>
             {% endif %}
         </div>
-
-        <h2>My markers</h2>
-        {% if not my_markers %}
-        <p>Поки нема маркерів</p>
-        {% endif %}
-
-        <form method="post" action="{% url 'logout' %}">
-            {% csrf_token %}
-            <button type="submit">Logout</button>
-        </form>
     </main>
 
     <div class="bottom-menu">
         <a href="{% url 'map' %}">Карта 🔥</a>
         {% if not request_form %}
-        <a href="{% url 'search' %}">Шукати нові збори 👤</a>
+        <a href="{% url 'personal_page' %}">Особистий кабінет 👤</a>
         {% endif %}
     </div>
 </body>

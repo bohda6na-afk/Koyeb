@@ -6,6 +6,7 @@ urlpatterns = [
     # Marker media and comment endpoints
     path('marker/<int:marker_id>/add-media/', views.add_media, name='add_media'),
     path('marker/<int:marker_id>/add-comment/', views.add_comment, name='add_comment'),
+    path('marker/<int:marker_id>/delete-media/<int:file_id>/', views.delete_media, name='delete_media'),
     # Edit marker endpoints
     path('marker/<int:marker_id>/edit/', views.edit_marker_view, name='edit_marker'),
     path('marker/<int:marker_id>/edit/submit/', views.edit_marker_submit, name='edit_marker_submit'),

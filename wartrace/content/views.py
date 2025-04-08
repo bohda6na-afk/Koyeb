@@ -21,24 +21,38 @@ from .forms import MarkerForm, MarkerFileForm
 
 @login_required
 def edit_marker_view(request, marker_id):
-    """Render the marker editing page."""
+    """
+    Render the marker editing page.
+    
+    Args:
+        request: The HTTP request object
+        marker_id: The ID of the marker to edit
+        
+    Returns:
+        Rendered template for editing the marker
+    """
     marker = get_object_or_404(Marker, id=marker_id)
 
     # Check if user has permission to edit this marker
     if marker.user != request.user and not request.user.is_staff:
         return render(request, '403.html', status=403)
-    
-    # Create formset for files associated with the marker
-    MarkerFileFormSet = modelformset_factory(MarkerFile, form=MarkerFileForm, extra=0)
-    formset = MarkerFileFormSet(queryset=marker.files.all())
 
-    return render(request, 'marker-edit.html', {'marker': marker, 'formset': formset})
+    return render(request, 'marker-edit.html', {'marker': marker})
 
 
 @login_required
 @require_http_methods(["POST"])
 def edit_marker_submit(request, marker_id):
-    """Handle marker editing form submission."""
+    """
+    Handle marker editing form submission.
+    
+    Args:
+        request: The HTTP request object containing form data
+        marker_id: The ID of the marker to edit
+        
+    Returns:
+        JsonResponse with the result of the operation
+    """
     marker = get_object_or_404(Marker, id=marker_id)
 
     # Check if user has permission to edit this marker
@@ -48,38 +62,95 @@ def edit_marker_submit(request, marker_id):
             'message': 'Permission denied'
         }, status=403)
 
-    # Handle form submission
-    if request.method == 'POST':
-        try:
-            if request.content_type == 'application/json':
-                data = json.loads(request.body)
-                form = MarkerForm(data, instance=marker)
-            else:
-                form = MarkerForm(request.POST, instance=marker)
-                
-            if form.is_valid():
-                form.save()
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Marker updated successfully',
-                    'redirect': reverse('marker_detail', args=[marker.id])
-                })
-            else:
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Form validation failed',
-                    'errors': form.errors
-                }, status=400)
-        except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'message': f'Error updating marker: {str(e)}'
-            }, status=500)
+    try:
+        # Update marker fields from form data
+        marker.title = request.POST.get('title', marker.title)
+        marker.description = request.POST.get('description', marker.description)
+        marker.latitude = float(request.POST.get('latitude', marker.latitude))
+        marker.longitude = float(request.POST.get('longitude', marker.longitude))
+        marker.source = request.POST.get('source', marker.source)
+        marker.category = request.POST.get('category', marker.category)
+        marker.visibility = request.POST.get('visibility', marker.visibility)
+        
+        # Parse date string
+        date_str = request.POST.get('date')
+        if date_str:
+            marker.date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Update boolean fields
+        marker.object_detection = request.POST.get('object_detection') == 'on'
+        marker.camouflage_detection = request.POST.get('camouflage_detection') == 'on'
+        marker.damage_assessment = request.POST.get('damage_assessment') == 'on'
+        marker.thermal_analysis = request.POST.get('thermal_analysis') == 'on'
+        marker.request_verification = request.POST.get('request_verification') == 'on'
+        
+        # If request verification is enabled, update marker verification status
+        if marker.request_verification and marker.verification != 'verified':
+            marker.verification = 'pending'
+        
+        # Save the updated marker
+        marker.save()
+        
+        # Handle file uploads
+        files = request.FILES.getlist('files')
+        for file in files:
+            MarkerFile.objects.create(marker=marker, file=file)
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Marker updated successfully',
+            'redirect': reverse('marker_detail', args=[marker.id])
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error updating marker: {str(e)}'
+        }, status=500)
 
-    return JsonResponse({
-        'success': False,
-        'message': 'Invalid request method'
-    }, status=405)
+
+@login_required
+@require_http_methods(["POST"])
+def delete_media(request, marker_id, file_id):
+    """
+    Delete a media file associated with a marker.
+    
+    Args:
+        request: The HTTP request object
+        marker_id: The ID of the marker
+        file_id: The ID of the file to delete
+        
+    Returns:
+        JsonResponse with the result of the operation
+    """
+    marker = get_object_or_404(Marker, id=marker_id)
+    
+    # Check if user has permission to delete media
+    if marker.user != request.user and not request.user.is_staff:
+        return JsonResponse({
+            'success': False,
+            'message': 'Permission denied'
+        }, status=403)
+    
+    try:
+        # Get the file
+        file_obj = get_object_or_404(MarkerFile, id=file_id, marker=marker)
+        
+        # Delete file from storage
+        if default_storage.exists(file_obj.file.name):
+            default_storage.delete(file_obj.file.name)
+        
+        # Delete database record
+        file_obj.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'File deleted successfully'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error deleting file: {str(e)}'
+        }, status=500)
 
 
 @login_required
@@ -104,14 +175,19 @@ def add_comment(request, marker_id):
         comment = Comment(marker=marker, user=request.user, text=text)
         comment.save()
         
+        # Check if user has a profile with is_verified attribute
+        is_verified = False
+        if hasattr(request.user, 'profile'):
+            is_verified = getattr(request.user.profile, 'is_verified', False)
+        
         # Return data for updating the UI
         return JsonResponse({
             'success': True,
             'id': comment.id,
             'text': comment.text,
-            'username': comment.user.username,
+            'username': request.user.username,
             'date': comment.created_at.strftime('%Y-%m-%d'),
-            'is_verified': hasattr(request.user, 'profile') and request.user.profile.is_verified
+            'is_verified': is_verified
         })
     except Exception as e:
         return JsonResponse({
@@ -398,7 +474,12 @@ def create_marker(request):
             marker.verification = 'pending'
             marker.save()
 
-        return redirect('marker_detail', marker_id=marker.id)
+        # Return JSON response with marker_id instead of redirecting
+        return JsonResponse({
+            'success': True,
+            'message': 'Marker created successfully',
+            'marker_id': marker.id
+        })
 
     except Exception as e:
         return JsonResponse({
@@ -416,8 +497,8 @@ def marker_detail(request, marker_id):
         return render(request, '403.html', status=403)
     
     # If marker is for verified users only, check if user is verified
-    if marker.visibility == 'verified_only' and (not request.user.is_authenticated or 
-                                               not hasattr(request.user, 'profile') or 
+    if marker.user != request.user and marker.visibility == 'verified_only' and (not request.user.is_authenticated or
+                                               not hasattr(request.user, 'profile') or
                                                not request.user.profile.is_verified):
         return render(request, '403.html', status=403)
     

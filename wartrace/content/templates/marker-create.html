@@ -1,13 +1,14 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>War Trace Vision - Create Marker</title>
-  {% load static %}
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="{% static 'css/map.css' %}">
   <link rel="stylesheet" href="{% static 'css/marker-create.css' %}">
+  {% csrf_token %}
 </head>
 <body>
   <div class="map-container">
@@ -40,7 +41,11 @@
     </div>
 
     <div class="create-content">
-      <form id="create-marker-form">
+      <form id="create-marker-form" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" id="latitude" name="latitude">
+        <input type="hidden" id="longitude" name="longitude">
+        
         <div class="form-section">
           <label>Location Options</label>
           <div class="location-options">
@@ -75,16 +80,17 @@
 
         <div class="form-section">
           <label for="marker-title">Title*</label>
-          <input type="text" id="marker-title" placeholder="Enter a descriptive title" required>
+          <input type="text" id="marker-title" name="title" placeholder="Enter a descriptive title" required>
         </div>
 
         <div class="form-section">
           <label for="marker-date">Date of Observation*</label>
-          <input type="date" id="marker-date" required>
+          <input type="date" id="marker-date" name="date" required>
         </div>
 
         <div class="form-section">
           <label for="marker-category">Category*</label>
+          <input type="hidden" id="marker-category" name="category" value="infrastructure">
           <div class="category-selector">
             <div class="category-option active" data-category="infrastructure">
               <div class="category-icon infrastructure"></div>
@@ -107,12 +113,12 @@
 
         <div class="form-section">
           <label for="marker-description">Description*</label>
-          <textarea id="marker-description" placeholder="Provide detailed information about what you observed" required></textarea>
+          <textarea id="marker-description" name="description" placeholder="Provide detailed information about what you observed" required></textarea>
         </div>
 
         <div class="form-section">
           <label for="marker-source">Source*</label>
-          <input type="text" id="marker-source" placeholder="Describe how you obtained this information" required>
+          <input type="text" id="marker-source" name="source" placeholder="Describe how you obtained this information" required>
         </div>
 
         <div class="form-section media-upload-section">
@@ -129,7 +135,7 @@
                 Upload Files
               </button>
             </div>
-            <input type="file" id="media-upload" multiple accept="image/*,video/*" class="file-input">
+            <input type="file" id="media-upload" name="files" multiple accept="image/*,video/*" class="file-input">
           </div>
         </div>
 
@@ -139,28 +145,28 @@
             <div class="toggle-option">
               <span>AI Object Detection</span>
               <label class="toggle-switch">
-                <input type="checkbox" id="toggle-object-detection" checked>
+                <input type="checkbox" id="toggle-object-detection" name="object_detection" checked>
                 <span class="toggle-slider"></span>
               </label>
             </div>
             <div class="toggle-option">
               <span>Camouflage Detection</span>
               <label class="toggle-switch">
-                <input type="checkbox" id="toggle-camouflage">
+                <input type="checkbox" id="toggle-camouflage" name="camouflage_detection">
                 <span class="toggle-slider"></span>
               </label>
             </div>
             <div class="toggle-option">
               <span>Damage Assessment</span>
               <label class="toggle-switch">
-                <input type="checkbox" id="toggle-damage" checked>
+                <input type="checkbox" id="toggle-damage" name="damage_assessment" checked>
                 <span class="toggle-slider"></span>
               </label>
             </div>
             <div class="toggle-option">
               <span>Thermal Analysis</span>
               <label class="toggle-switch">
-                <input type="checkbox" id="toggle-thermal">
+                <input type="checkbox" id="toggle-thermal" name="thermal_analysis">
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -173,7 +179,7 @@
             <div class="verification-toggle">
               <span>Request Verification</span>
               <label class="toggle-switch">
-                <input type="checkbox" id="toggle-verification" checked>
+                <input type="checkbox" id="toggle-verification" name="request_verification" checked>
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -185,6 +191,7 @@
 
         <div class="form-section">
           <label>Visibility</label>
+          <input type="hidden" id="marker-visibility" name="visibility" value="public">
           <div class="visibility-options">
             <div class="visibility-option active" data-visibility="public">
               <svg viewBox="0 0 24 24">
@@ -192,7 +199,7 @@
               </svg>
               <span>Public</span>
             </div>
-            <div class="visibility-option" data-visibility="verified">
+            <div class="visibility-option" data-visibility="verified_only">
               <svg viewBox="0 0 24 24">
                 <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
               </svg>
@@ -237,8 +244,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // Initialize the map
-      const map = L.map('create-map').setView([51.505, -0.09], 13);
+      // Get CSRF token for AJAX requests
+      const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+      
+      // Set the current date as default date
+      const today = new Date();
+      document.getElementById('marker-date').value = today.toISOString().split('T')[0];
+      
+      // Initialize the map - Set default location to Ukraine
+      const map = L.map('create-map').setView([49.0139, 31.2858], 6); // Ukraine coordinates
       
       // Attribution text
       const attributionText = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -261,6 +275,10 @@
           </svg>
           <span>Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}</span>
         `;
+        
+        // Update hidden form fields
+        document.getElementById('latitude').value = lat;
+        document.getElementById('longitude').value = lng;
       }
       
       // Function to set marker at location
@@ -386,6 +404,9 @@
             opt.classList.remove('active');
           });
           this.classList.add('active');
+          
+          // Update hidden input with selected category
+          document.getElementById('marker-category').value = this.dataset.category;
         });
       });
       
@@ -397,6 +418,9 @@
             opt.classList.remove('active');
           });
           this.classList.add('active');
+          
+          // Update hidden input with selected visibility
+          document.getElementById('marker-visibility').value = this.dataset.visibility;
         });
       });
       
@@ -409,67 +433,46 @@
           return;
         }
         
-        // Collect form data
-        const title = document.getElementById('marker-title').value;
-        const date = document.getElementById('marker-date').value;
-        const description = document.getElementById('marker-description').value;
-        const source = document.getElementById('marker-source').value;
+        // Using FormData to handle file uploads
+        const formData = new FormData(this);
         
-        const activeCategory = document.querySelector('.category-option.active');
-        const category = activeCategory ? activeCategory.dataset.category : null;
-        
-        const activeVisibility = document.querySelector('.visibility-option.active');
-        const visibility = activeVisibility ? activeVisibility.dataset.visibility : null;
-        
-        const objectDetection = document.getElementById('toggle-object-detection').checked;
-        const camouflageDetection = document.getElementById('toggle-camouflage').checked;
-        const damageAssessment = document.getElementById('toggle-damage').checked;
-        const thermalAnalysis = document.getElementById('toggle-thermal').checked;
-        const requestVerification = document.getElementById('toggle-verification').checked;
-        
-        // Get uploaded files
-        const fileInput = document.getElementById('media-upload');
-        const files = fileInput.files;
-        const fileNames = Array.from(files).map(file => file.name);
-        
-        // Display collected data in alert
-        const formData = {
-          location: selectedLocation,
-          title: title,
-          date: date,
-          category: category,
-          description: description,
-          source: source,
-          files: fileNames,
-          options: {
-            objectDetection,
-            camouflageDetection,
-            damageAssessment,
-            thermalAnalysis,
-            requestVerification
-          },
-          visibility: visibility
-        };
-        
-        alert('Form submitted with data:\n' + JSON.stringify(formData, null, 2));
-        
-        // Show success notification
-        showNotification('Marker saved successfully!');
+        // Send AJAX request to create marker
+        fetch('{% url "create_marker" %}', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-CSRFToken': csrftoken,
+            // Don't set Content-Type for FormData with files
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showNotification('Marker saved successfully!');
+            // Redirect to marker detail page after 2 seconds
+            setTimeout(() => {
+              window.location.href = `/marker/${data.marker_id}/`;
+            }, 2000);
+          } else {
+            showNotification('Error: ' + data.message);
+          }
+        })
+        .catch(error => {
+          showNotification('Error: ' + error.message);
+        });
       });
       
       // Handle cancel button
       document.getElementById('cancel-marker').addEventListener('click', function() {
         if (confirm('Are you sure you want to cancel? All entered data will be lost.')) {
-          // In a real app, you would navigate back to the previous page
-          showNotification('Operation cancelled');
+          window.location.href = '{% url "index" %}';
         }
       });
       
       // Handle back button
       document.getElementById('back-to-map').addEventListener('click', function() {
         if (confirm('Go back to map? Any unsaved changes will be lost.')) {
-          // In a real app, you would navigate back to the map page
-          showNotification('Returning to map');
+          window.location.href = '{% url "index" %}';
         }
       });
       

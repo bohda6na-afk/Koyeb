@@ -8,7 +8,7 @@
 <body>
     <div class="login-container">
         <div class="login-box">
-            <h1 class="login-title">Sign in</h1>
+            <h1 class="login-title">Ввійти</h1>
 
             {% if form.non_field_errors %}
                 <div class="error-message">
@@ -29,12 +29,12 @@
                     <small>Пароль</small>
                 </div>
 
-                <button type="submit" class="login-button">sign in</button>
+                <button type="submit" class="login-button">Ввійти</button>
             </form>
 
             <p class="bottom-links">
-                <a href="{% url 'register' %}">Register</a> |
-                <a href="{% url 'password_reset' %}">Forgot Password?</a>
+                <a href="{% url 'register' %}">Зареєструватись</a> |
+                <a href="{% url 'password_reset' %}">Забули пароль?</a>
             </p>
         </div>
     </div>

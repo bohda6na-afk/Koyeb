@@ -35,6 +35,16 @@ aside {
     border-radius: 5px;
 }
 
+.settings {
+    cursor: pointer;
+}
+
+.contact-header{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
 .contact-info {
     margin-bottom: 15px;
 }

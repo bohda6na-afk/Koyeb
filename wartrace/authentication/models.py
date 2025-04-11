@@ -5,8 +5,8 @@ import json
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     CATEGORY_CHOICES = [
-        ('soldier', 'Soldier'),
-        ('volunteer', 'Volunteer'),
+        ('soldier', 'Військовий(-а)'),
+        ('volunteer', 'Волонтер(-ка)'),
     ]
     category = models.CharField(max_length=9, choices=CATEGORY_CHOICES, blank=True, null=True)
     contacts = models.TextField(blank=True, null=True)

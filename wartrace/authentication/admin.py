@@ -7,21 +7,13 @@ import json
 class UserProfileInline(admin.StackedInline):
     model = UserProfile
     can_delete = False
-    verbose_name_plural = 'User Profiles'
+    verbose_name_plural = 'Profile'
+    fk_name = 'user'
+    fields = ('category', 'contacts')
 
 class CustomUserAdmin(UserAdmin):
     inlines = (UserProfileInline,)
     list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'category')
-    fieldsets = (
-        (None, {'fields': ('username', 'password')}),
-        ('Personal info', {'fields': ('first_name', 'last_name', 'email')}),
-        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser',
-                                       'groups', 'user_permissions')}),
-        ('Important dates', {'fields': ('last_login', 'date_joined')}),
-        ('Category', {'fields': ('category',)}),
-        ('Request Data', {'fields': ('request_data',)}), #Renamed
-        ('Contacts', {'fields': ('contacts',)}), #Added contacts field
-    )
 
     def category(self, obj):
         try:

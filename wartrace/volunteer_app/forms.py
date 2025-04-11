@@ -11,9 +11,15 @@ class RequestForm(forms.ModelForm):
             'urgency',
         ]
         widgets = {
-            # Customize widgets for a better user experience (optional)
             'description': forms.Textarea(attrs={'rows': 4, 'cols': 50}),
             'aproximate_price': forms.NumberInput(attrs={'min': 0}),
             'status': forms.Select(choices=Request.STATUS_CHOICES),
             'urgency': forms.Select(choices=Request.URGENCY_CHOICES),
+        }
+        labels = {
+            'name':"Заголовок",
+            'description': "Опис",
+            'aproximate_price': "Приблизна ціна (грн)",
+            'status': "Статус",
+            'urgency': "Терміновість",
         }

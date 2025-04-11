@@ -45,6 +45,7 @@ def personal_page(request):
 
     contacts = user_profile.get_contacts()
     request_data = user_profile.requests.all() if user_profile.category == 'soldier' else user_profile.volunteer_req.all()
+    request_data = request_data.order_by('-id')
     request_form = RequestForm() if user_profile.category == 'soldier' else None
     contact_form = ContactForm(initial={
         'phone': contacts.get('phone', ''),
@@ -84,6 +85,7 @@ def profile(request, volunteer_id):
     req_data = user_profile.requests.all() if user_profile.category == 'soldier' else user_profile.volunteer_req.all()
     return render(request, 'profile.html', {'user':user_profile.user, 'contacts':user_profile.get_contacts(), 'request_data': req_data})
 
+@login_required
 def req_ready(request, req_id):
     req = Request.objects.get(id=req_id)
     if request.user.profile != req.author:
@@ -91,3 +93,25 @@ def req_ready(request, req_id):
     req.status = 'done'
     req.save()
     return redirect('personal_page')
+
+@login_required
+def settings(request):
+    if request.method == "POST":
+        user_profile = request.user.profile
+        contacts = user_profile.get_contacts()
+        contact_form = ContactForm(request.POST)
+        print(contact_form.is_valid())
+        print(contact_form.errors)
+        if contact_form.is_valid():
+            contacts['phone'] = contact_form.cleaned_data['phone']
+            contacts['socials'] = {
+                'title': contact_form.cleaned_data['socials_title'],
+                'link': contact_form.cleaned_data['socials_link'],
+            }
+            user_profile.set_contacts(contacts)
+            user_profile.save()
+            return redirect('personal_page')
+        else:
+            return render(request, 'settings.html', {'contact_form':contact_form})
+    form = ContactForm()
+    return render(request, 'settings.html', {'contact_form':form})

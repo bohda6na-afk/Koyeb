@@ -29,6 +29,12 @@ class UserRegistrationForm(forms.ModelForm):
         for field_name in self.Meta.fields:
             self.fields[field_name].required = True
         self.fields['category'].required = True
+    
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        if User.objects.filter(email=email).exists():
+            raise forms.ValidationError("This email is already registered.")
+        return email
 
     def clean_password2(self):
         cd = self.cleaned_data
@@ -45,12 +51,6 @@ class UserRegistrationForm(forms.ModelForm):
         return user
 
 class ContactForm(forms.Form):
-    phone = forms.CharField(label='Phone', required=False)
-    socials_title = forms.CharField(label='Socials Title', required=False)
-    socials_link = forms.URLField(label='Socials Link', required=False)
-
-class RequestForm(forms.Form):
-    title = forms.CharField()
-    description = forms.CharField(widget=forms.Textarea)
-    deadline = forms.DateField(input_formats=['%d/%m/%Y']) #dd/mm/yyyy
-    approximate_price = forms.IntegerField(label="Приблизна ціна (грн)")
+    phone = forms.CharField(label='Номер телефону', required=False)
+    socials_title = forms.CharField(label='Назва соц. мережі', required=False)
+    socials_link = forms.URLField(label='Посилання на соц. мережі', required=False)

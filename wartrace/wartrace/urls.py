@@ -26,7 +26,8 @@ urlpatterns = [
     path('maps/', include('maps.urls')),
     path('detection/', include('detection.urls')),
     path('content/', include('content.urls')),
-    path('search/', include('volunteer_app.urls'), name='search'),
+    path('search/', include('volunteer_app.urls')),  # Видалив name='search', оскільки це не має сенсу для include()
+    path('chat/', include('chat.urls')),  # Додайте цей рядок для включення URL-шаблонів чату
     path('', RedirectView.as_view(url='/maps/'), name='home'),
 ]
 

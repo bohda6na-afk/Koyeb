@@ -51,7 +51,7 @@ def create_request(request):
             req = form.save(commit=False)
             req.user = request.user.profile
             req.save()
-            return redirect('volunteer_app:search')  # або інше місце
+            return redirect('volunteer_app:search')
     else:
         form = Request()
     return render(request, 'volunteer_app/create_request.html', {'form': form})

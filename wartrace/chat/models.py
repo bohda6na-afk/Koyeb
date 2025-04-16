@@ -4,7 +4,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from volunteer_app.models import Request
 
-User = get_user_model()  # Використовуємо кастомну модель User
+User = get_user_model()
 
 class Chat(models.Model):
     request = models.ForeignKey(Request, on_delete=models.CASCADE, related_name='chats')
@@ -20,7 +20,6 @@ class Chat(models.Model):
     
     @property
     def last_message(self):
-        """Повертає останнє повідомлення чату"""
         return self.messages.order_by('-timestamp').first()
 
 class Message(models.Model):

@@ -4,7 +4,6 @@ from django.contrib.auth import get_user_model
 from volunteer_app.models import Request
 from .models import Chat, Message
 from .forms import MessageForm
-# Використовуйте ваші власні декоратори
 from authentication.decorators import login_required, volunteer
 
 User = get_user_model()
@@ -18,10 +17,8 @@ def chat_list(request):
 def start_chat(request, request_id):
     military_request = get_object_or_404(Request, id=request_id)
     
-    # Витягуємо User із UserProfile
     author_user = military_request.author.user
 
-    # Перевіряємо, чи чат вже існує
     chat = Chat.objects.filter(
         request=military_request,
         participants=request.user
@@ -45,15 +42,14 @@ def chat_detail(request, chat_id):
             message.chat = chat
             message.sender = request.user
             message.save()
-            
-            # Оновлюємо час останнього оновлення чату
+
             chat.save()
             
-            return redirect('chat:chat_detail', chat_id=chat.id)  # Виправлено
+            return redirect('chat:chat_detail', chat_id=chat.id)
     else:
         form = MessageForm()
     
-    # Позначаємо повідомлення як прочитані
+
     chat.messages.filter(is_read=False).exclude(sender=request.user).update(is_read=True)
     
     return render(request, 'chat/chat_detail.html', {

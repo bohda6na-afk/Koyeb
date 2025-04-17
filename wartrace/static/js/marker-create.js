@@ -156,6 +156,9 @@ document.addEventListener('DOMContentLoaded', function() {
     setMarkerAt(lat, lng);
   });
   
+  // Simple file management
+  let uploadedFiles = [];
+  
   // Handle file upload
   document.getElementById('trigger-upload').addEventListener('click', function() {
     document.getElementById('media-upload').click();
@@ -170,6 +173,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const previewArea = document.getElementById('media-preview');
     previewArea.innerHTML = '';
     
+    // Store and display each selected file
+    uploadedFiles = Array.from(files);
+    
     // Display each selected file
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -178,6 +184,29 @@ document.addEventListener('DOMContentLoaded', function() {
       reader.onload = function(event) {
         const previewItem = document.createElement('div');
         previewItem.className = 'media-preview-item';
+        previewItem.dataset.index = i;
+        
+        // Add delete button
+        const deleteBtn = document.createElement('div');
+        deleteBtn.className = 'media-delete-btn';
+        deleteBtn.innerHTML = '✕';
+        deleteBtn.onclick = function(e) {
+          e.stopPropagation();
+          // Remove this file from uploadedFiles
+          uploadedFiles.splice(parseInt(previewItem.dataset.index), 1);
+          // Remove this preview item
+          previewItem.remove();
+          // If no files left, show empty message
+          if (uploadedFiles.length === 0) {
+            previewArea.innerHTML = '<div class="empty-media-message">Немає вибраних файлів</div>';
+          } else {
+            // Refresh preview to update indices
+            refreshPreview();
+          }
+          // Update the file input
+          updateFileInput();
+        };
+        previewItem.appendChild(deleteBtn);
         
         if (file.type.startsWith('image/')) {
           const img = document.createElement('img');
@@ -196,6 +225,55 @@ document.addEventListener('DOMContentLoaded', function() {
       reader.readAsDataURL(file);
     }
   });
+  
+  function refreshPreview() {
+    const previewArea = document.getElementById('media-preview');
+    previewArea.innerHTML = '';
+    
+    uploadedFiles.forEach((file, index) => {
+      const previewItem = document.createElement('div');
+      previewItem.className = 'media-preview-item';
+      previewItem.dataset.index = index;
+      
+      // Add delete button
+      const deleteBtn = document.createElement('div');
+      deleteBtn.className = 'media-delete-btn';
+      deleteBtn.innerHTML = '✕';
+      deleteBtn.onclick = function(e) {
+        e.stopPropagation();
+        uploadedFiles.splice(index, 1);
+        refreshPreview();
+        updateFileInput();
+      };
+      previewItem.appendChild(deleteBtn);
+      
+      if (file.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        previewItem.appendChild(img);
+      } else if (file.type.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        video.controls = true;
+        previewItem.appendChild(video);
+      }
+      
+      previewArea.appendChild(previewItem);
+    });
+  }
+  
+  function updateFileInput() {
+    // Create a new DataTransfer object
+    const dataTransfer = new DataTransfer();
+    
+    // Add all files to the DataTransfer object
+    uploadedFiles.forEach(file => {
+      dataTransfer.items.add(file);
+    });
+    
+    // Set the new file list to the file input
+    document.getElementById('media-upload').files = dataTransfer.files;
+  }
   
   // Handle category selection
   const categoryOptions = document.querySelectorAll('.category-option');
@@ -229,13 +307,23 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('create-marker-form').addEventListener('submit', function(e) {
     e.preventDefault();
     
-    if (!selectedLocation) {
-      showNotification('Please select a location on the map.');
+    if (!document.getElementById('latitude').value || !document.getElementById('longitude').value) {
+      showNotification('Будь ласка, виберіть місце на карті');
       return;
     }
     
+    // Show saving notification
+    showNotification('Збереження маркера...');
+    
     // Using FormData to handle file uploads
     const formData = new FormData(this);
+    
+    // Prepare AI detection options using the correct field names for the backend model
+    // Map the UI field names to the backend model field names
+    formData.set('object_detection', document.getElementById('toggle-object-detection').checked);
+    formData.set('camouflage_detection', document.getElementById('toggle-camouflage').checked);  // Model field name
+    formData.set('damage_assessment', document.getElementById('toggle-damage').checked);
+    formData.set('thermal_analysis', document.getElementById('toggle-thermal').checked);  // Model field name
     
     // Send AJAX request to create marker
     fetch('/content/marker/create/submit/', {
@@ -248,17 +336,77 @@ document.addEventListener('DOMContentLoaded', function() {
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        showNotification('Marker saved successfully!');
-        // Redirect to marker detail page after 2 seconds
-        setTimeout(() => {
-          window.location.href = `/content/marker/${data.marker_id}/`;
-        }, 1000);
+        // Check if there are any AI options enabled and files to process
+        const hasAiOptions = 
+          document.getElementById('toggle-object-detection').checked || 
+          document.getElementById('toggle-camouflage').checked ||
+          document.getElementById('toggle-damage').checked ||
+          document.getElementById('toggle-thermal').checked;
+        
+        const uploadedFilesCount = document.querySelectorAll('.media-preview-item').length;
+        
+        if (hasAiOptions && uploadedFilesCount > 0) {
+          showNotification('Маркер збережено! Починаємо обробку зображень...');
+          
+          // Trigger AI processing by calling process_marker API
+          fetch(`/detection/marker/${data.marker_id}/process/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({}) // Empty body as options are already set on the marker
+          })
+          .then(response => {
+            if (response.ok) {
+              return response.json();
+            } else {
+              console.error('Error response:', response.status, response.statusText);
+              // Try to get the error message
+              return response.text().then(text => {
+                try {
+                  return JSON.parse(text);
+                } catch (e) {
+                  return { success: false, message: `Server error: ${response.status}` };
+                }
+              });
+            }
+          })
+          .then(processingData => {
+            if (processingData.success) {
+              showNotification('ШІ-аналіз запущено. Результати будуть доступні на сторінці маркера.');
+            } else {
+              console.error('Processing error:', processingData);
+              showNotification(`Помилка обробки: ${processingData.message || 'Невідома помилка'}`);
+            }
+            
+            // Always redirect to marker detail page
+            setTimeout(() => {
+              window.location.href = `/content/marker/${data.marker_id}/`;
+            }, 2000);
+          })
+          .catch(error => {
+            console.error('Error triggering AI processing:', error);
+            showNotification('Помилка обробки зображень. Маркер був збережений, але ШІ-аналіз не був виконаний.');
+            
+            // Still redirect to the marker page
+            setTimeout(() => {
+              window.location.href = `/content/marker/${data.marker_id}/`;
+            }, 2000);
+          });
+        } else {
+          showNotification('Маркер успішно збережено!');
+          // Redirect to marker detail page after short delay
+          setTimeout(() => {
+            window.location.href = `/content/marker/${data.marker_id}/`;
+          }, 1500);
+        }
       } else {
-        showNotification('Error: ' + data.message);
+        showNotification('Помилка: ' + data.message);
       }
     })
     .catch(error => {
-      showNotification('Error: ' + error.message);
+      showNotification('Помилка: ' + error.message);
     });
   });
   

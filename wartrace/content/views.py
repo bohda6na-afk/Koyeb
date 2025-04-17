@@ -14,6 +14,7 @@ from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.db import models, transaction
 import json
+import logging
 
 from .models import Marker, MarkerFile, Comment, MarkerReport
 from .forms import MarkerForm, MarkerFileForm
@@ -79,9 +80,9 @@ def edit_marker_submit(request, marker_id):
         
         # Update boolean fields
         marker.object_detection = request.POST.get('object_detection') == 'on'
-        marker.camouflage_detection = request.POST.get('camouflage_detection') == 'on'
+        marker.military_detection = request.POST.get('military_detection') == 'on'
         marker.damage_assessment = request.POST.get('damage_assessment') == 'on'
-        marker.thermal_analysis = request.POST.get('thermal_analysis') == 'on'
+        marker.emergency_recognition = request.POST.get('emergency_recognition') == 'on'
         marker.request_verification = request.POST.get('request_verification') == 'on'
         
         # If request verification is enabled, update marker verification status
@@ -432,49 +433,79 @@ def create_marker(request):
     """Handle marker creation form submission."""
     try:
         # Parse form data
-        if request.content_type == 'application/json':
-            data = json.loads(request.body)
-        else:
-            # Handle form data
-            data = request.POST.dict()
+        data = request.POST.dict()
+        
+        # Configure logger for this specific view
+        logger = logging.getLogger('content.views.create_marker')
+        logger.info(f"Create marker request from user {request.user.username}")
+        logger.debug(f"Form data: {data}")
 
-            # Convert string boolean values to actual booleans
-            for key in ['object_detection', 'camouflage_detection', 'damage_assessment', 
-                        'thermal_analysis', 'request_verification']:
-                if key in data:
-                    data[key] = data[key].lower() == 'true'
+        # Convert checkbox form values to boolean
+        boolean_fields = [
+            'object_detection', 
+            'camouflage_detection',  # This matches the model field name
+            'damage_assessment', 
+            'thermal_analysis',  # This matches the model field name
+            'request_verification'
+        ]
+        
+        for field in boolean_fields:
+            # Form checkbox values come as 'on' or various truthy strings or not present
+            if field in data:
+                # Handle both checkbox 'on' values and JSON 'true'/'false' string values
+                val = data[field]
+                if isinstance(val, str):
+                    data[field] = val.lower() in ('on', 'true', 'yes', '1')
+                else:
+                    data[field] = bool(val)
+            else:
+                data[field] = False
+                
+        logger.debug(f"Processed boolean fields: {[(field, data.get(field)) for field in boolean_fields]}")
 
-        # Create marker instance
+        # Create marker instance with properly mapped fields
         marker = Marker(
             user=request.user,
-            title=data.get('title'),
-            description=data.get('description'),
+            title=data.get('title', ''),
+            description=data.get('description', ''),
             latitude=float(data.get('latitude', 0)),
             longitude=float(data.get('longitude', 0)),
             date=datetime.strptime(data.get('date'), '%Y-%m-%d').date() if data.get('date') else timezone.now(),
             category=data.get('category', 'infrastructure'),
             source=data.get('source', ''),
-            visibility=data.get('visibility', 'private'),
+            visibility=data.get('visibility', 'public'),
+            
+            # Map form fields directly to model fields - use correct field names
             object_detection=data.get('object_detection', False),
             camouflage_detection=data.get('camouflage_detection', False),
             damage_assessment=data.get('damage_assessment', False),
             thermal_analysis=data.get('thermal_analysis', False),
             request_verification=data.get('request_verification', False)
         )
+        
+        # Set verification status if requested
+        if marker.request_verification:
+            marker.verification = 'pending'
+            
         marker.save()
+        logger.info(f"Created marker {marker.id}")
 
         # Handle file uploads
         files = request.FILES.getlist('files')
+        logger.info(f"Received {len(files)} files for marker {marker.id}")
+        
+        successful_files = 0
         for file in files:
-            file_instance = MarkerFile(marker=marker, file=file)
-            file_instance.save()
+            try:
+                # Handle each file with error checking
+                MarkerFile.objects.create(marker=marker, file=file)
+                successful_files += 1
+            except Exception as e:
+                logger.error(f"Error saving file {file.name} for marker {marker.id}: {str(e)}")
+                # Continue with other files even if one fails
+                
+        logger.info(f"Successfully saved {successful_files} of {len(files)} files for marker {marker.id}")
 
-        # If request verification is enabled, update marker verification status
-        if marker.request_verification:
-            marker.verification = 'pending'
-            marker.save()
-
-        # Return JSON response with marker_id instead of redirecting
         return JsonResponse({
             'success': True,
             'message': 'Marker created successfully',
@@ -482,6 +513,7 @@ def create_marker(request):
         })
 
     except Exception as e:
+        logger.exception(f"Error creating marker: {str(e)}")
         return JsonResponse({
             'success': False,
             'message': f'Error creating marker: {str(e)}'

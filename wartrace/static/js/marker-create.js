@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setMarkerAt(lat, lng);
   });
   
-  // Simple file management
+  // Simple file management - modified for single file only
   let uploadedFiles = [];
   
   // Handle file upload
@@ -169,66 +169,36 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (files.length === 0) return;
     
-    // Clear preview area
-    const previewArea = document.getElementById('media-preview');
-    previewArea.innerHTML = '';
+    // Only take the first file
+    const file = files[0];
     
-    // Store and display each selected file
-    uploadedFiles = Array.from(files);
-    
-    // Display each selected file
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const reader = new FileReader();
-      
-      reader.onload = function(event) {
-        const previewItem = document.createElement('div');
-        previewItem.className = 'media-preview-item';
-        previewItem.dataset.index = i;
-        
-        // Add delete button
-        const deleteBtn = document.createElement('div');
-        deleteBtn.className = 'media-delete-btn';
-        deleteBtn.innerHTML = '✕';
-        deleteBtn.onclick = function(e) {
-          e.stopPropagation();
-          // Remove this file from uploadedFiles
-          uploadedFiles.splice(parseInt(previewItem.dataset.index), 1);
-          // Remove this preview item
-          previewItem.remove();
-          // If no files left, show empty message
-          if (uploadedFiles.length === 0) {
-            previewArea.innerHTML = '<div class="empty-media-message">Немає вибраних файлів</div>';
-          } else {
-            // Refresh preview to update indices
-            refreshPreview();
-          }
-          // Update the file input
-          updateFileInput();
-        };
-        previewItem.appendChild(deleteBtn);
-        
-        if (file.type.startsWith('image/')) {
-          const img = document.createElement('img');
-          img.src = event.target.result;
-          previewItem.appendChild(img);
-        } else if (file.type.startsWith('video/')) {
-          const video = document.createElement('video');
-          video.src = event.target.result;
-          video.controls = true;
-          previewItem.appendChild(video);
-        }
-        
-        previewArea.appendChild(previewItem);
-      };
-      
-      reader.readAsDataURL(file);
+    // Ensure it's an image file
+    if (!file.type.startsWith('image/')) {
+      showNotification('Будь ласка, завантажте тільки файли зображень');
+      return;
     }
+    
+    // Replace any existing files
+    uploadedFiles = [file];
+    
+    // Refresh preview
+    refreshPreview();
+    
+    // Update the file input
+    updateFileInput();
+    
+    // Clear the input so the same file can be selected again if needed
+    this.value = '';
   });
-  
+
   function refreshPreview() {
     const previewArea = document.getElementById('media-preview');
     previewArea.innerHTML = '';
+    
+    if (uploadedFiles.length === 0) {
+      previewArea.innerHTML = '<div class="empty-media-message">Немає вибраних файлів</div>';
+      return;
+    }
     
     uploadedFiles.forEach((file, index) => {
       const previewItem = document.createElement('div');
@@ -247,6 +217,7 @@ document.addEventListener('DOMContentLoaded', function() {
       };
       previewItem.appendChild(deleteBtn);
       
+      // Create preview thumbnail based on file type
       if (file.type.startsWith('image/')) {
         const img = document.createElement('img');
         img.src = URL.createObjectURL(file);
@@ -261,15 +232,15 @@ document.addEventListener('DOMContentLoaded', function() {
       previewArea.appendChild(previewItem);
     });
   }
-  
+
   function updateFileInput() {
     // Create a new DataTransfer object
     const dataTransfer = new DataTransfer();
     
-    // Add all files to the DataTransfer object
-    uploadedFiles.forEach(file => {
-      dataTransfer.items.add(file);
-    });
+    // Add the file to the DataTransfer object (if any)
+    if (uploadedFiles.length > 0) {
+      dataTransfer.items.add(uploadedFiles[0]);
+    }
     
     // Set the new file list to the file input
     document.getElementById('media-upload').files = dataTransfer.files;
@@ -319,11 +290,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const formData = new FormData(this);
     
     // Prepare AI detection options using the correct field names for the backend model
-    // Map the UI field names to the backend model field names
     formData.set('object_detection', document.getElementById('toggle-object-detection').checked);
-    formData.set('camouflage_detection', document.getElementById('toggle-camouflage').checked);  // Model field name
-    formData.set('damage_assessment', document.getElementById('toggle-damage').checked);
-    formData.set('thermal_analysis', document.getElementById('toggle-thermal').checked);  // Model field name
+    formData.set('camouflage_detection', document.getElementById('toggle-camouflage').checked);
+    formData.set('damage_assessment', false); // Hidden option
+    formData.set('thermal_analysis', false);  // Hidden option
+    
+    // Ensure file is included
+    if (uploadedFiles.length > 0) {
+      // Remove any existing file input values
+      if (formData.has('files')) {
+        formData.delete('files');
+      }
+      
+      // Add the file
+      formData.append('files', uploadedFiles[0]);
+    } else {
+      showNotification('Будь ласка, завантажте зображення для аналізу');
+      return;
+    }
     
     // Send AJAX request to create marker
     fetch('/content/marker/create/submit/', {
@@ -349,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function() {
           showNotification('Маркер збережено! Починаємо обробку зображень...');
           
           // Trigger AI processing by calling process_marker API
-          fetch(`/detection/marker/${data.marker_id}/process/`, {
+          fetch(`/detection/api/markers/${data.marker_id}/auto-process/`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -357,21 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({}) // Empty body as options are already set on the marker
           })
-          .then(response => {
-            if (response.ok) {
-              return response.json();
-            } else {
-              console.error('Error response:', response.status, response.statusText);
-              // Try to get the error message
-              return response.text().then(text => {
-                try {
-                  return JSON.parse(text);
-                } catch (e) {
-                  return { success: false, message: `Server error: ${response.status}` };
-                }
-              });
-            }
-          })
+          .then(response => response.json())
           .then(processingData => {
             if (processingData.success) {
               showNotification('ШІ-аналіз запущено. Результати будуть доступні на сторінці маркера.');

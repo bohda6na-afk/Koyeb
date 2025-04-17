@@ -2,302 +2,71 @@ import json
 import os
 import traceback
 import logging
+import threading
+import time
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
-from django.db import models
+from django.urls import reverse
+from django.db import models, transaction
 from django.conf import settings
+from django.contrib import messages
+from concurrent.futures import ThreadPoolExecutor
 
 from content.models import Marker, MarkerFile
-from .models import Detection, ObjectDetection, ClassificationResult
+from .models import Detection, ObjectDetection, ClassificationResult, DetectionConfig
 from .services.main import process_marker, process_marker_file, model_service, MODEL_CONFIG, ensure_detection_directories
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Global worker pool for processing
+worker_pool = ThreadPoolExecutor(max_workers=2)
+# Track processing status
+processing_markers = {}
+
+def can_edit_marker(user, marker):
+    """Check if user can edit the marker"""
+    return user.is_staff or marker.user == user
+
+def can_view_marker(user, marker):
+    """Check if user can view the marker (more permissive)"""
+    # If public marker, anyone can view
+    if marker.visibility == 'public':
+        return True
+    
+    # If private marker, only owner or staff can view
+    if marker.visibility == 'private':
+        return user.is_staff or marker.user == user
+    
+    # If verified_only marker, verified users, owner or staff can view
+    if marker.visibility == 'verified_only':
+        # This assumes some verified status for users - adjust as needed
+        return (user.is_authenticated and marker.verification == 'verified') or user.is_staff or marker.user == user
+    
+    return False
+
 @login_required
-@require_http_methods(["POST"])
-def process_marker_api(request, marker_id):
-    """API endpoint to process a marker's files with AI"""
+def process_marker_view(request, marker_id):
+    """
+    Process a marker with AI detection
+    """
     marker = get_object_or_404(Marker, id=marker_id)
     
-    # Ensure detection directories exist
-    ensure_detection_directories()
-    
-    # Debug message
-    logger.info(f"Processing marker ID: {marker_id}")
-    
-    # Security check - only owner or staff can process
+    # Check if user has permission to process this marker
     if marker.user != request.user and not request.user.is_staff:
-        logger.warning(f"Permission denied for user {request.user.username} on marker {marker_id}")
-        return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
+        return render(request, '403.html', status=403)
     
-    try:
-        # Check which detector types are enabled in the marker
-        detector_types = []
-        if marker.object_detection:
-            detector_types.append('object_detection')
-        if marker.camouflage_detection:
-            detector_types.append('military_detection')
-        if marker.damage_assessment:
-            detector_types.append('damage_assessment')
-        if marker.thermal_analysis:
-            detector_types.append('emergency_recognition')
-        
-        logger.info(f"Enabled detector types: {detector_types}")
-        
-        if not detector_types:
-            logger.warning(f"No AI detection options enabled for marker {marker_id}")
-            return JsonResponse({
-                'success': False,
-                'message': 'No AI detection options enabled for this marker'
-            }, status=400)
-        
-        # Process the marker
-        logger.info(f"Starting processing for marker {marker_id}")
-        try:
-            results = process_marker(marker)
-            logger.info(f"Processing results: {results}")
-        except Exception as e:
-            logger.error(f"Error in process_marker: {str(e)}")
-            logger.error(traceback.format_exc())
-            return JsonResponse({
-                'success': False,
-                'message': f"Error in processing: {str(e)}"
-            }, status=500)
-        
-        # For object detection results, add the annotated images to the marker's media
-        processed_files = 0
-        
-        try:
-            # Get all the newly created detections for this marker using the proper join
-            marker_files = MarkerFile.objects.filter(marker=marker)
-            detections = Detection.objects.filter(marker_file__in=marker_files)
-            
-            # Filter for appropriate types of detections
-            detections = detections.filter(
-                detector_type__in=['object_detection', 'military_detection', 'damage_assessment', 'emergency_recognition']
-            )
-            logger.info(f"Found {len(detections)} detections for processing")
-            
-            # Process each detection
-            for detection in detections:
-                try:
-                    if detection.image_path and detection.image_path.strip():
-                        # Use the correct path to access the file - handle both absolute and relative paths
-                        image_path = detection.image_path
-                        if image_path.startswith('/'):
-                            image_path = image_path[1:]  # Remove leading slash
-                        
-                        # Form the full path to the result image
-                        full_path = os.path.join(settings.MEDIA_ROOT, image_path)
-                        logger.info(f"Checking file path: {full_path}")
-                        
-                        if os.path.exists(full_path):
-                            try:
-                                # Create unique filename with detector type
-                                detector_name = detection.detector_type.replace('_', '-')
-                                file_name = f"ai_{detector_name}_{detection.id}.jpg"
-                                
-                                # Check if we already have this processed image
-                                existing = MarkerFile.objects.filter(
-                                    marker=marker, 
-                                    file__contains=f"ai_{detector_name}_{detection.id}"
-                                ).exists()
-                                
-                                if not existing:
-                                    logger.info(f"Creating new marker file: {file_name}")
-                                    # Open the file and create a new MarkerFile
-                                    with open(full_path, 'rb') as f:
-                                        file_content = f.read()
-                                        new_file = MarkerFile.objects.create(
-                                            marker=marker,
-                                            file=ContentFile(file_content, name=file_name)
-                                        )
-                                        logger.info(f"Created marker file {new_file.id}")
-                                        processed_files += 1
-                                else:
-                                    logger.info(f"File already exists: {file_name}")
-                            except Exception as e:
-                                logger.error(f"Error saving processed file: {str(e)}")
-                                logger.error(traceback.format_exc())
-                        else:
-                            logger.warning(f"File does not exist: {full_path}")
-                            # Try alternate path construction if the file wasn't found
-                            alt_path = os.path.join(settings.BASE_DIR, 'media', image_path)
-                            if os.path.exists(alt_path):
-                                logger.info(f"Found file at alternate path: {alt_path}")
-                                try:
-                                    file_name = f"ai_{detection.detector_type}_{detection.id}.jpg"
-                                    
-                                    # Check if we already have this processed image
-                                    existing = MarkerFile.objects.filter(
-                                        marker=marker, 
-                                        file__contains=file_name
-                                    ).exists()
-                                    
-                                    if not existing:
-                                        with open(alt_path, 'rb') as f:
-                                            file_content = f.read()
-                                            new_file = MarkerFile.objects.create(
-                                                marker=marker,
-                                                file=ContentFile(file_content, name=file_name)
-                                            )
-                                            logger.info(f"Created marker file {new_file.id} from alternate path")
-                                            processed_files += 1
-                                except Exception as e:
-                                    logger.error(f"Error saving processed file from alternate path: {str(e)}")
-                except Exception as det_e:
-                    logger.error(f"Error processing detection {detection.id}: {str(det_e)}")
-                    logger.error(traceback.format_exc())
-        except Exception as e:
-            logger.error(f"Error in file processing: {str(e)}")
-            logger.error(traceback.format_exc())
-        
-        logger.info(f"Added {processed_files} result images")
-        
-        return JsonResponse({
-            'success': True,
-            'message': f"Processed {results['processed']} files with {results['detections']} detections. Added {processed_files} result images.",
-            'results': results
-        })
-        
-    except Exception as e:
-        logger.error(f"Error processing marker {marker_id}: {str(e)}")
-        logger.error(traceback.format_exc())
-        return JsonResponse({
-            'success': False,
-            'message': f"Error processing marker: {str(e)}"
-        }, status=500)
-
-
-@login_required
-@require_http_methods(["GET"])
-def marker_detection_results(request, marker_id):
-    """View detection results for a specific marker"""
-    marker = get_object_or_404(Marker, id=marker_id)
-    logger.info(f"Viewing detection results for marker {marker_id}")
+    # Check if marker has files
+    file_count = marker.files.count()
+    if file_count == 0:
+        messages.warning(request, "This marker has no uploaded files to process.")
+        return redirect('detection:marker_results', marker_id=marker.id)
     
-    # Security check - only owner or staff can view
-    if marker.user != request.user and not request.user.is_staff:
-        return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
-    
-    # Get all detections for this marker's files
-    files_with_detections = []
-    
-    for marker_file in marker.files.all():
-        # Direct query to avoid related_name issues
-        detections = Detection.objects.filter(marker_file_id=marker_file.id)
-        if detections:
-            detection_data = []
-            
-            for detection in detections:
-                # Get objects for this detection
-                objects = list(ObjectDetection.objects.filter(detection=detection).values(
-                    'label', 'confidence', 'x_min', 'y_min', 'x_max', 'y_max'
-                ))
-                
-                # Get classifications for this detection
-                classifications = list(ClassificationResult.objects.filter(detection=detection).values(
-                    'label', 'confidence'
-                ))
-                
-                # Get model description
-                model_description = ""
-                if detection.detector_type in MODEL_CONFIG:
-                    if detection.model_name in MODEL_CONFIG[detection.detector_type]:
-                        model_description = MODEL_CONFIG[detection.detector_type][detection.model_name].get('description', '')
-                
-                # Create full URL path for the image
-                image_url = None
-                if detection.image_path:
-                    # Handle relative paths
-                    image_path = detection.image_path
-                    if image_path.startswith('/'):
-                        image_path = image_path[1:]
-                    image_url = f"{settings.MEDIA_URL}{image_path}"
-                
-                # Get the display name for the detector type
-                detector_display_name = detection.detector_type.replace('_', ' ').title()
-                
-                detection_data.append({
-                    'id': detection.id,
-                    'detector_type': detection.detector_type,
-                    'detector_display_name': detector_display_name,
-                    'model_name': detection.model_name,
-                    'model_description': model_description,
-                    'summary': detection.summary,
-                    'image_path': detection.image_path,
-                    'image_url': image_url,
-                    'objects': objects,
-                    'classifications': classifications,
-                    'is_object_detection': detection.detector_type in ['object_detection', 'military_detection'],
-                    'is_classification': detection.detector_type in ['damage_assessment', 'emergency_recognition']
-                })
-            
-            files_with_detections.append({
-                'file': marker_file,
-                'detections': detection_data
-            })
-    
-    # Get all detector types
-    detector_types = {
-        detector_type: {
-            'name': detector_type.replace('_', ' ').title(),
-            'description': next(iter(models.values())).get('description', '')
-        }
-        for detector_type, models in MODEL_CONFIG.items()
-    }
-    
-    return render(request, 'detection/marker_results.html', {
-        'marker': marker,
-        'files_with_detections': files_with_detections,
-        'detector_types': detector_types
-    })
-
-
-@login_required
-@require_http_methods(["GET"])
-def available_models(request):
-    """API endpoint to get available models information"""
-    models_info = {}
-    
-    for detector_type, models in MODEL_CONFIG.items():
-        models_info[detector_type] = {
-            'name': detector_type.replace('_', ' ').title(),
-            'description': next(iter(models.values())).get('description', ''),
-            'models': [
-                {
-                    'name': model_name,
-                    'description': model_config.get('description', '')
-                }
-                for model_name, model_config in models.items()
-            ]
-        }
-    
-    return JsonResponse({'models': models_info})
-
-
-@login_required
-@require_http_methods(["POST"])
-def process_single_file(request, file_id):
-    """Process a single file with AI detection"""
-    marker_file = get_object_or_404(MarkerFile, id=file_id)
-    marker = marker_file.marker
-    
-    # Ensure detection directories exist
-    ensure_detection_directories()
-    
-    logger.info(f"Processing single file ID: {file_id} for marker {marker.id}")
-    
-    # Security check - only owner or staff can process
-    if marker.user != request.user and not request.user.is_staff:
-        return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
-    
-    # Determine which detector types to use based on marker settings
+    # Get current detector types enabled for this marker
     detector_types = []
     if marker.object_detection:
         detector_types.append('object_detection')
@@ -308,70 +77,458 @@ def process_single_file(request, file_id):
     if marker.thermal_analysis:
         detector_types.append('emergency_recognition')
     
-    logger.info(f"Detector types: {detector_types}")
+    # Clear previous detections if reprocessing
+    # Fix: access marker_file.detections.all() first to get a related manager
+    detection_count = 0
+    for marker_file in marker.files.all():
+        detections = marker_file.detections.all()  # Get the related manager
+        detection_count += detections.filter(detector_type__in=detector_types).count()
     
-    if not detector_types:
+    if detection_count > 0:
+        if request.method == 'POST' and request.POST.get('confirm_reprocess') == 'yes':
+            # User confirmed reprocessing, delete old detections
+            for marker_file in marker.files.all():
+                marker_file.detections.filter(detector_type__in=detector_types).delete()
+        else:
+            # Ask for confirmation before reprocessing
+            return render(request, 'detection/confirm_reprocess.html', {
+                'marker': marker,
+                'detection_count': detection_count,
+                'detector_types': detector_types
+            })
+    
+    # Process the marker
+    try:
+        # Use the processing service
+        from .services.main import process_marker
+        result = process_marker(marker)
+        
+        # Show success message
+        messages.success(request, f"Processing complete: {result['processed']} files processed with {result['detections']} detections.")
+        
+    except Exception as e:
+        logger.exception(f"Error processing marker {marker_id}: {str(e)}")
+        messages.error(request, f"Error during processing: {str(e)}")
+    
+    # Redirect to the results page
+    return redirect('detection:marker_results', marker_id=marker.id)
+
+@login_required
+@require_http_methods(["POST"])
+def process_marker_api(request, marker_id):
+    """API endpoint to start marker processing"""
+    marker = get_object_or_404(Marker, id=marker_id)
+    
+    # Check permissions
+    if not request.user.is_staff and marker.user != request.user:
         return JsonResponse({
             'success': False,
-            'message': 'No AI detection options enabled for this marker'
-        }, status=400)
+            'message': 'Permission denied'
+        }, status=403)
+    
+    # Check if already processing
+    if marker_id in processing_markers and processing_markers[marker_id]['status'] == 'processing':
+        return JsonResponse({
+            'success': False,
+            'message': 'Processing already in progress'
+        })
     
     try:
-        # Process the file with all detector types
-        logger.info(f"Processing file with detector types: {detector_types}")
-        detections = process_marker_file(marker_file, detector_types)
-        logger.info(f"Created {len(detections)} detections")
+        # Parse enabled detector types from form
+        detector_types = []
         
-        # Add processed images as new marker files
-        processed_files = 0
-        for detection in detections:
-            if detection.image_path:
-                # Use the correct path to access the file
-                image_path = detection.image_path
-                if image_path.startswith('/'):
-                    image_path = image_path[1:]  # Remove leading slash
-                
-                # Try multiple possible path constructions to find the file
-                possible_paths = [
-                    os.path.join(settings.MEDIA_ROOT, image_path),
-                    os.path.join(settings.BASE_DIR, 'media', image_path),
-                ]
-                
-                file_found = False
-                for full_path in possible_paths:
-                    if os.path.exists(full_path):
-                        try:
-                            # Create unique filename with timestamp to avoid conflicts
-                            import time
-                            timestamp = int(time.time())
-                            file_name = f"{detection.detector_type}_{detection.id}_{timestamp}.jpg"
-                            
-                            # Add the file to the marker
-                            with open(full_path, 'rb') as f:
-                                MarkerFile.objects.create(
-                                    marker=marker,
-                                    file=ContentFile(f.read(), name=file_name)
-                                )
-                                processed_files += 1
-                                logger.info(f"Created file: {file_name}")
-                            
-                            file_found = True
-                            break  # Found and processed the file, no need to try other paths
-                        except Exception as e:
-                            logger.error(f"Error creating file from {full_path}: {str(e)}")
-                
-                if not file_found:
-                    logger.warning(f"Could not find result image at any expected location for detection {detection.id}")
+        # Map UI model types to backend model types
+        model_map = {
+            'object_detection': 'object_detection',
+            'military_detection': 'camouflage_detection',
+            'damage_assessment': 'damage_assessment',
+            'emergency_recognition': 'thermal_analysis'
+        }
+        
+        # Update marker with selected detection options
+        for ui_type, model_field in model_map.items():
+            # Check if this type was selected in the form
+            enabled = request.POST.get(ui_type) == 'on'
+            setattr(marker, model_field, enabled)
+            
+            if enabled:
+                detector_types.append(ui_type)
+        
+        # Save updated marker
+        marker.save()
+        
+        # Start processing in background
+        processing_markers[marker_id] = {
+            'status': 'processing',
+            'progress': 0,
+            'detector_types': detector_types
+        }
+        
+        # Start background processing task
+        worker_pool.submit(
+            process_marker_background,
+            marker, 
+            detector_types
+        )
         
         return JsonResponse({
             'success': True,
-            'message': f"Processed file with {len(detections)} detection results. Added {processed_files} images.",
-            'detection_count': len(detections)
+            'message': 'Processing started',
+            'detector_types': detector_types
         })
+    
     except Exception as e:
-        logger.error(f"Error in process_single_file: {str(e)}")
+        logger.error(f"Error starting processing: {str(e)}")
         logger.error(traceback.format_exc())
         return JsonResponse({
             'success': False,
-            'message': f"Error processing file: {str(e)}"
+            'message': f'Error starting processing: {str(e)}'
         }, status=500)
+
+@login_required
+def marker_processing_status(request, marker_id):
+    """Get the current processing status for a marker"""
+    marker = get_object_or_404(Marker, id=marker_id)
+    
+    # Check permissions
+    if not request.user.is_staff and marker.user != request.user:
+        return JsonResponse({
+            'success': False,
+            'message': 'Permission denied'
+        }, status=403)
+    
+    # Get current status
+    if marker_id in processing_markers:
+        status_data = processing_markers[marker_id]
+        return JsonResponse({
+            'status': status_data['status'],
+            'progress': status_data.get('progress', 0),
+            'result': status_data.get('result')
+        })
+    else:
+        return JsonResponse({
+            'status': 'idle'
+        })
+
+@login_required
+@require_http_methods(["POST"])
+def auto_process_marker(request, marker_id):
+    """Automatically start processing for a marker based on its detection settings"""
+    marker = get_object_or_404(Marker, id=marker_id)
+    
+    # Check permissions
+    if not request.user.is_staff and marker.user != request.user:
+        return JsonResponse({
+            'success': False,
+            'message': 'Permission denied'
+        }, status=403)
+    
+    try:
+        # Check if already processing
+        if marker_id in processing_markers and processing_markers[marker_id]['status'] == 'processing':
+            return JsonResponse({
+                'success': False,
+                'message': 'Processing already in progress'
+            })
+        
+        # Map model types to detector types
+        model_map = {
+            'object_detection': marker.object_detection,
+            'military_detection': marker.camouflage_detection,
+            'damage_assessment': marker.damage_assessment,
+            'emergency_recognition': marker.thermal_analysis
+        }
+        
+        # Get enabled detector types
+        detector_types = [dt for dt, enabled in model_map.items() if enabled]
+        
+        if not detector_types:
+            return JsonResponse({
+                'success': False,
+                'message': 'No detection types enabled'
+            })
+        
+        # Start processing in background
+        processing_markers[marker_id] = {
+            'status': 'processing',
+            'progress': 0,
+            'detector_types': detector_types
+        }
+        
+        # Start background processing task
+        worker_pool.submit(
+            process_marker_background,
+            marker, 
+            detector_types
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Processing started',
+            'detector_types': detector_types
+        })
+    
+    except Exception as e:
+        logger.error(f"Error starting auto processing: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JsonResponse({
+            'success': False,
+            'message': f'Error starting processing: {str(e)}'
+        }, status=500)
+
+def process_marker_background(marker, detector_types):
+    """Process a marker in background thread"""
+    marker_id = marker.id
+    
+    try:
+        logger.info(f"Starting background processing for marker {marker_id}")
+        
+        # Process marker with selected detector types
+        result = process_marker(marker)
+        
+        # Update status to completed
+        processing_markers[marker_id] = {
+            'status': 'completed',
+            'progress': 100,
+            'detector_types': detector_types,
+            'result': {
+                'success': True,
+                'message': 'Processing completed successfully',
+                'processed': result.get('processed', 0),
+                'detections': result.get('detections', 0),
+                'result_images': result.get('detections', 0),
+                'processing_time': result.get('processing_time')
+            }
+        }
+        logger.info(f"Completed background processing for marker {marker_id}: {result}")
+    
+    except Exception as e:
+        logger.error(f"Error in background processing for marker {marker_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        # Update status to error
+        processing_markers[marker_id] = {
+            'status': 'error',
+            'progress': 0,
+            'detector_types': detector_types,
+            'result': {
+                'success': False,
+                'message': f'Error during processing: {str(e)}'
+            }
+        }
+
+@login_required
+def marker_detection_results(request, marker_id):
+    """
+    Display all detection results for a marker
+    """
+    marker = get_object_or_404(Marker, id=marker_id)
+
+    # Check if user has permission to view this marker
+    if marker.visibility == 'private' and (not request.user.is_authenticated or marker.user != request.user):
+        return render(request, '403.html', status=403)
+    
+    # Get all files for this marker
+    marker_files = marker.files.all()
+    
+    # Collect all detections for all files of this marker
+    all_detections = []
+    detector_types = []
+    
+    for marker_file in marker_files:
+        # The correct way to query related Detection objects
+        detections = marker_file.detections.all()
+        
+        all_detections.extend(detections)
+        for det in detections:
+            if det.detector_type not in detector_types:
+                detector_types.append(det.detector_type)
+    
+    # Group detections by detector type
+    grouped_detections = {}
+    for det_type in detector_types:
+        grouped_detections[det_type] = [d for d in all_detections if d.detector_type == det_type]
+    
+    # Prepare data for the template
+    files_with_detections = []
+    total_objects = 0
+    
+    for marker_file in marker_files:
+        file_detections = marker_file.detections.all()
+        
+        if file_detections.exists():
+            # Count objects in all detections for this file
+            file_objects_count = sum(d.objects.count() for d in file_detections)
+            total_objects += file_objects_count
+            
+            # Enhance detection objects with additional data
+            enhanced_detections = []
+            for detection in file_detections:
+                # Get display name for detector type
+                detector_display_name = {
+                    'object_detection': 'Розпізнавання об\'єктів',
+                    'military_detection': 'Військова техніка',
+                    'damage_assessment': 'Оцінка пошкоджень',
+                    'emergency_recognition': 'Аналіз надзвичайних ситуацій'
+                }.get(detection.detector_type, detection.detector_type)
+                
+                # Get inference time from metadata
+                inference_time = None
+                if detection.metadata and 'inference_time' in detection.metadata:
+                    inference_time = detection.metadata['inference_time']
+                
+                # Calculate object classes
+                object_classes = {}
+                for obj in detection.objects.all():
+                    label = obj.label
+                    object_classes[label] = object_classes.get(label, 0) + 1
+                
+                enhanced_detections.append({
+                    'id': detection.id,
+                    'detector_type': detection.detector_type,
+                    'detector_display_name': detector_display_name,
+                    'model_name': detection.model_name,
+                    'summary': detection.summary,
+                    'image_url': detection.image_url,
+                    'object_count': detection.objects.count(),
+                    'object_classes': object_classes,
+                    'inference_time': inference_time,
+                    'objects': detection.objects.all()
+                })
+            
+            files_with_detections.append({
+                'file': marker_file,
+                'detections': enhanced_detections,
+                'detection_count': len(enhanced_detections)
+            })
+    
+    # Prepare detector types info for the template
+    detector_types_info = {
+        'object_detection': {
+            'name': 'Розпізнавання об\'єктів',
+            'description': 'Виявлення загальних об\'єктів на зображенні (люди, транспорт, будівлі та ін.)',
+            'enabled': marker.object_detection
+        },
+        'military_detection': {
+            'name': 'Військова техніка',
+            'description': 'Виявлення військової техніки та об\'єктів (танки, БТР, солдати та ін.)',
+            'enabled': marker.camouflage_detection
+        },
+        'damage_assessment': {
+            'name': 'Оцінка пошкоджень',
+            'description': 'Аналіз рівня пошкоджень будівель та інфраструктури',
+            'enabled': marker.damage_assessment
+        },
+        'emergency_recognition': {
+            'name': 'Надзвичайні ситуації',
+            'description': 'Виявлення пожеж, затоплень та інших надзвичайних ситуацій',
+            'enabled': marker.thermal_analysis
+        }
+    }
+    
+    return render(request, 'detection/marker_results.html', {
+        'marker': marker,
+        'files_with_detections': files_with_detections,
+        'total_detections': len(all_detections),
+        'total_objects': total_objects,
+        'file_count': marker_files.count(),
+        'detector_types': detector_types_info,
+        'can_edit': request.user.is_authenticated and (marker.user == request.user or request.user.is_staff)
+    })
+
+@login_required
+def detection_detail(request, detection_id):
+    """View detailed information about a specific detection"""
+    detection = get_object_or_404(Detection, id=detection_id)
+    marker = detection.marker_file.marker
+    
+    # Check if user has permission to view this marker
+    if marker.visibility == 'private' and (not request.user.is_authenticated or marker.user != request.user):
+        return render(request, '403.html', status=403)
+    
+    # Get objects for this detection
+    objects = detection.objects.all().order_by('-confidence')
+    
+    # Get display name from config or use detector type
+    detector_type = detection.detector_type
+    display_name = detector_type.replace('_', ' ').title()
+    model_description = ""
+    
+    try:
+        config = DetectionConfig.objects.get(detector_type=detector_type)
+        display_name = config.display_name
+        
+        # Get model description from model configuration
+        model_info = model_service.get_model(detector_type, detection.model_name)
+        if model_info and 'config' in model_info:
+            model_description = model_info['config'].get('description', '')
+    except DetectionConfig.DoesNotExist:
+        pass
+    except Exception as e:
+        logger.error(f"Error getting model info: {str(e)}")
+    
+    # Calculate object class counts
+    object_classes = {}
+    for obj in objects:
+        object_classes[obj.label] = object_classes.get(obj.label, 0) + 1
+    
+    context = {
+        'detection': detection,
+        'marker': marker,
+        'objects': objects,
+        'total_objects': objects.count(),
+        'object_classes': object_classes,
+        'detector_display_name': display_name,
+        'model_description': model_description
+    }
+    
+    return render(request, 'detection/detection_detail.html', context)
+
+@login_required
+def available_models(request):
+    """API endpoint to get available detection models"""
+    detector_configs = DetectionConfig.objects.filter(is_enabled=True).order_by('order')
+    
+    models = []
+    for config in detector_configs:
+        models.append({
+            'type': config.detector_type,
+            'display_name': config.display_name,
+            'description': config.description,
+            'icon': config.icon,
+            'order': config.order
+        })
+    
+    return JsonResponse({
+        'success': True,
+        'models': models
+    })
+
+@login_required
+def process_file_view(request, file_id):
+    """View for processing a single marker file"""
+    marker_file = get_object_or_404(MarkerFile, id=file_id)
+    marker = marker_file.marker
+    
+    # Check if user has permission
+    if not request.user.is_staff and marker.user != request.user:
+        return render(request, '403.html', status=403)
+    
+    # Get detector types
+    detector_configs = DetectionConfig.objects.filter(is_enabled=True).order_by('order')
+    
+    # Redirect to marker processing view for simplicity
+    return redirect('detection:process_marker', marker_id=marker.id)
+
+@login_required
+def file_detection_results(request, file_id):
+    """View detection results for a specific file"""
+    marker_file = get_object_or_404(MarkerFile, id=file_id)
+    marker = marker_file.marker
+    
+    # Check permissions
+    if marker.visibility == 'private' and (not request.user.is_authenticated or marker.user != request.user):
+        return render(request, '403.html', status=403)
+    
+    # Redirect to marker results for simplicity
+    return redirect('detection:marker_results', marker_id=marker.id)

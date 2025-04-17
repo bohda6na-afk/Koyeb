@@ -7,12 +7,13 @@ from typing import Dict, List, Tuple, Any, Union, Optional
 import logging
 import traceback
 import random
+import time
 
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 
-from ..models import Detection, ObjectDetection, ClassificationResult, SegmentationMask
+from ..models import Detection, ObjectDetection, ClassificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +31,23 @@ MODEL_CONFIG = {
         'yolo11m': {
             'model_path': os.path.join(MODELS_ROOT, 'yolo11m.pt'),
             'type': 'ultralytics',
-            'threshold': 0.25,
-            'description': 'General object recognition (people, vehicles, etc.)'
+            'threshold': 0.30,  # Increased confidence threshold
+            'iou': 0.45,  # Added IoU threshold for NMS
+            'description': 'General object recognition (COCO dataset - 80 classes)'
         }
     },
     'military_detection': {
-        'yolo11m_military': {
-            'model_path': os.path.join(MODELS_ROOT, 'yolo11m-military.pt'),
+        'yolo11s_military': {
+            'model_path': os.path.join(MODELS_ROOT, 'yolo11s-military.pt'),
             'type': 'ultralytics',
-            'threshold': 0.3,
-            'description': 'Military objects detection (vehicles, weapons, soldiers, etc.)'
+            'threshold': 0.35,  # Higher confidence for more precise military detections
+            'iou': 0.40,  # IoU threshold for NMS
+            'description': 'Military objects detection (specialized model)',
+            'classes': [
+                'camouflage_soldier', 'weapon', 'military_tank', 'military_truck', 
+                'military_vehicle', 'civilian', 'soldier', 'civilian_vehicle',
+                'military_artillery', 'trench', 'military_aircraft', 'military_warship'
+            ]
         }
     },
     'damage_assessment': {
@@ -78,30 +86,39 @@ def ensure_detection_directories():
 # Call this function to ensure directories exist when the module is loaded
 ensure_detection_directories()
 
-# Define color palette for consistent object visualization
+# Modern color palette for object visualization (RGBA for overlay transparency handling)
 COLOR_PALETTE = {
-    # Military objects
-    'tank': (30, 30, 200),  # Red
-    'military_vehicle': (30, 100, 220),  # Red-orange
-    'soldier': (20, 100, 120),  # Deep blue
-    'helicopter': (0, 140, 255),  # Orange
-    'airplane': (0, 200, 255),  # Yellow
-    'weapon': (20, 20, 180),  # Dark red
-    'armored_vehicle': (50, 50, 220),  # Light red
+    # Military object colors - using more modern, distinct colors with reduced transparency
+    'camouflage_soldier': (52, 96, 73, 0.5),     # Camo green
+    'weapon': (145, 30, 30, 0.6),                # Dark red
+    'military_tank': (94, 23, 35, 0.6),          # Burgundy
+    'military_truck': (155, 62, 21, 0.6),        # Rust
+    'military_vehicle': (201, 70, 24, 0.6),      # Orange-red
+    'civilian': (20, 158, 140, 0.5),             # Teal
+    'soldier': (38, 82, 153, 0.5),               # Blue
+    'civilian_vehicle': (76, 175, 80, 0.5),      # Green
+    'military_artillery': (110, 28, 36, 0.6),    # Brown-red
+    'trench': (94, 78, 23, 0.5),                 # Brown
+    'military_aircraft': (48, 63, 159, 0.5),     # Royal blue
+    'military_warship': (26, 35, 126, 0.5),      # Navy blue
     
-    # Common objects
-    'person': (0, 200, 0),  # Green
-    'car': (200, 100, 0),  # Blue
-    'truck': (200, 150, 0),  # Light blue
-    'building': (128, 0, 128),  # Purple
-    'tree': (0, 128, 0),  # Dark green
-    'road': (100, 100, 100),  # Gray
-    'water': (255, 0, 0),  # Blue
-    'bridge': (180, 180, 0),  # Teal
-    'damage': (0, 0, 200),  # Red
+    # Common COCO object colors with reduced transparency
+    'person': (63, 81, 181, 0.5),                # Indigo
+    'bicycle': (33, 150, 243, 0.5),              # Blue
+    'car': (0, 188, 212, 0.5),                   # Cyan
+    'motorcycle': (0, 150, 136, 0.5),            # Teal
+    'airplane': (76, 175, 80, 0.5),              # Green
+    'bus': (139, 195, 74, 0.5),                  # Light green
+    'train': (205, 220, 57, 0.5),                # Lime
+    'truck': (255, 235, 59, 0.5),                # Yellow
+    'boat': (255, 193, 7, 0.5),                  # Amber
+    'traffic light': (255, 152, 0, 0.5),         # Orange
+    'fire hydrant': (255, 87, 34, 0.5),          # Deep orange
+    'stop sign': (244, 67, 54, 0.5),             # Red
+    'bench': (156, 39, 176, 0.5),                # Purple
     
     # Default for other classes
-    'default': (200, 200, 200)  # Light gray
+    'default': (158, 158, 158, 0.5)              # Gray
 }
 
 class ModelService:
@@ -109,6 +126,7 @@ class ModelService:
     
     def __init__(self):
         self.loaded_models = {}
+        logger.info("Model service initialized")
     
     def get_model(self, detector_type: str, model_name: str = None) -> Any:
         """Load and cache a model based on detector type and model name"""
@@ -117,9 +135,11 @@ class ModelService:
             model_name = list(MODEL_CONFIG.get(detector_type, {}).keys())[0]
         
         model_key = f"{detector_type}_{model_name}"
+        logger.info(f"Requesting model: {model_key}")
         
         # Return cached model if already loaded
-        if model_key in self.loaded_models:
+        if (model_key in self.loaded_models):
+            logger.info(f"Using cached model: {model_key}")
             return self.loaded_models[model_key]
         
         # Get model config
@@ -137,9 +157,12 @@ class ModelService:
             if model_type == 'ultralytics':
                 try:
                     from ultralytics import YOLO
+                    start_time = time.time()
+                    
                     if os.path.exists(model_path):
+                        logger.info(f"Loading YOLO model from {model_path}")
                         model = YOLO(model_path)
-                        logger.info(f"Loaded YOLO model from {model_path}")
+                        logger.info(f"Loaded YOLO model from {model_path} in {time.time() - start_time:.2f}s")
                     else:
                         # If model file doesn't exist, attempt to download it
                         logger.warning(f"Model file not found at {model_path}, attempting to download")
@@ -255,8 +278,14 @@ class ModelService:
         
         try:
             # Run inference with the model
-            threshold = config.get('threshold', 0.25)
-            results = model(file_path, conf=threshold)
+            threshold = config.get('threshold', 0.30)
+            iou = config.get('iou', 0.45)
+            logger.info(f"Running inference with {detector_type} model (conf={threshold}, iou={iou})")
+            
+            start_time = time.time()
+            results = model(file_path, conf=threshold, iou=iou)
+            inference_time = time.time() - start_time
+            logger.info(f"Inference completed in {inference_time:.2f}s")
             
             # Read original image for annotation
             original_img = cv2.imread(file_path)
@@ -271,7 +300,15 @@ class ModelService:
             # Convert YOLO results to our format
             for box in result.boxes:
                 label_idx = int(box.cls)
-                label = result.names[label_idx]
+                
+                # Use the YOLO model's class names or config's class list
+                if hasattr(result, 'names') and label_idx in result.names:
+                    label = result.names[label_idx]
+                elif 'classes' in config and label_idx < len(config['classes']):
+                    label = config['classes'][label_idx]
+                else:
+                    label = f"class_{label_idx}"
+                    
                 conf = float(box.conf)
                 
                 # Get coordinates (convert to pixels)
@@ -283,11 +320,14 @@ class ModelService:
                     'bbox': [x1, y1, x2, y2]
                 })
             
+            logger.info(f"Found {len(detections)} objects in image")
+            
             # Draw annotations on the image
-            annotated_img = self._draw_beautiful_annotations(original_img.copy(), detections, detector_type)
+            annotated_img = self._draw_modern_annotations(original_img.copy(), detections, detector_type)
             
             # Save the annotated image
             cv2.imwrite(output_path, annotated_img)
+            logger.info(f"Saved annotated image to {output_path}")
             
             # Define the URL path for accessing the result
             relative_path = f"detection_results/{detector_type}/{output_filename}"
@@ -308,7 +348,8 @@ class ModelService:
                 'detections': detections,
                 'output_path': output_path,
                 'relative_path': relative_path,
-                'summary': summary
+                'summary': summary,
+                'inference_time': inference_time
             }
             
         except Exception as e:
@@ -348,256 +389,193 @@ class ModelService:
                 'summary': f"Error processing image: {str(e)}"
             }
     
-    def _process_with_keras(self, file_path: str, detector_type: str, model, config: Dict) -> Dict:
-        """Process an image with a Keras classification model"""
-        # Store result in detector-specific subfolder
-        file_stem = Path(file_path).stem
-        output_filename = f"{file_stem}_{detector_type}.jpg"
-        output_dir = os.path.join(RESULTS_ROOT, detector_type)
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, output_filename)
-        
-        try:
-            # Get labels from config
-            labels = config.get('labels', [])
-            if not labels:
-                raise ValueError("No class labels defined for the model")
-            
-            # Preprocess image for the model
-            import tensorflow as tf
-            img = tf.keras.preprocessing.image.load_img(file_path, target_size=(224, 224))
-            img_array = tf.keras.preprocessing.image.img_to_array(img)
-            img_array = np.expand_dims(img_array, 0)  # Create batch dimension
-            img_array = img_array / 255.0  # Normalize
-            
-            # Run prediction
-            predictions = model.predict(img_array)
-            
-            # Get prediction results
-            if predictions.shape[1] != len(labels):
-                logger.warning(f"Model output shape {predictions.shape[1]} doesn't match number of labels {len(labels)}")
-                
-            # For multi-class, use argmax to get the most likely class
-            if len(predictions.shape) == 2:
-                main_idx = np.argmax(predictions[0])
-                main_class = labels[main_idx] if main_idx < len(labels) else f"class_{main_idx}"
-                main_confidence = float(predictions[0][main_idx])
-                
-                # Create all predictions dictionary
-                all_predictions = {}
-                for i, conf in enumerate(predictions[0]):
-                    if i < len(labels):
-                        all_predictions[labels[i]] = float(conf)
-                    else:
-                        all_predictions[f"class_{i}"] = float(conf)
-                
-            # Create a visualization of the classification result
-            self._create_classification_visualization(
-                file_path, 
-                output_path, 
-                detector_type, 
-                main_class, 
-                all_predictions
-            )
-            
-            # Define the URL path for accessing the result
-            relative_path = f"detection_results/{detector_type}/{output_filename}"
-            
-            return {
-                'class': main_class,
-                'confidence': main_confidence,
-                'all_predictions': all_predictions,
-                'relative_path': relative_path
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in Keras processing: {str(e)}")
-            logger.error(traceback.format_exc())
-            
-            # Create error image
-            error_img = np.zeros((400, 600, 3), dtype=np.uint8)
-            cv2.putText(
-                error_img, 
-                f"Error in {detector_type} classification", 
-                (20, 150), 
-                cv2.FONT_HERSHEY_SIMPLEX, 
-                0.7, 
-                (255, 255, 255), 
-                1
-            )
-            cv2.putText(
-                error_img, 
-                str(e), 
-                (20, 200), 
-                cv2.FONT_HERSHEY_SIMPLEX, 
-                0.5, 
-                (200, 100, 100), 
-                1
-            )
-            
-            # Save error image
-            cv2.imwrite(output_path, error_img)
-            
-            relative_path = f"detection_results/{detector_type}/{output_filename}"
-            
-            return {
-                'class': 'error',
-                'confidence': 0.0,
-                'all_predictions': {'error': 1.0},
-                'relative_path': relative_path
-            }
-    
-    def _draw_beautiful_annotations(self, img, detections, detector_type):
-        """Draw beautiful annotations on the image"""
-        # Create a slightly darker copy for better contrast of the annotations
-        overlay = img.copy()
+    def _draw_modern_annotations(self, img, detections, detector_type):
+        """Draw modern, minimalistic annotations with segmentation-style labels"""
         h, w = img.shape[:2]
         
-        # Add a title/header based on detector type
-        header_bg_color = (50, 50, 50) if detector_type == 'object_detection' else (40, 20, 60)
-        header_text_color = (255, 255, 255)
+        # Create a clean copy of the image for overlays
+        result_img = img.copy()
         
-        header_text = "General Object Detection" if detector_type == 'object_detection' else "Military Object Detection"
+        # Apply slight brightness enhancement to original image (1.1 = 10% brighter)
+        result_img = cv2.convertScaleAbs(result_img, alpha=1.1, beta=5)
         
-        # Add a header/title bar
-        cv2.rectangle(img, (0, 0), (w, 40), header_bg_color, -1)
-        cv2.putText(img, header_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, header_text_color, 2)
+        # Configure header style based on detector type
+        if detector_type == 'object_detection':
+            header_bg_color = (37, 37, 38)  # Dark gray
+            header_accent = (66, 165, 245)  # Blue
+            header_text = "COCO Object Detection"
+        else:  # military_detection
+            header_bg_color = (37, 37, 38)  # Dark gray
+            header_accent = (239, 83, 80)   # Red
+            header_text = "Military Object Detection"
         
-        # Add objects detected
-        for i, det in enumerate(detections):
+        # Calculate label font scale based on image size
+        base_font_scale = 0.4 * max(1, min(w, h) / 500)
+        
+        # Add a minimal modern header
+        header_height = int(60 * base_font_scale)
+        header_bar = np.zeros((header_height, w, 3), dtype=np.uint8)
+        header_bar[:] = header_bg_color
+        
+        # Add accent line at bottom of header
+        accent_height = int(3 * base_font_scale)
+        header_bar[-accent_height:, :] = header_accent
+        
+        # Add header text
+        font_scale = base_font_scale * 1.1
+        font_thickness = max(1, int(1.5 * base_font_scale))
+        cv2.putText(
+            header_bar,
+            header_text,
+            (int(20 * base_font_scale), int(header_height * 0.6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (255, 255, 255),
+            font_thickness
+        )
+        
+        # Add the header to the result image
+        result_img = np.vstack([header_bar, result_img])
+        h = result_img.shape[0]  # Update height with header
+        
+        # Draw detections on the overlay
+        for det in detections:
             x_min, y_min, x_max, y_max = map(int, det['bbox'])
+            
+            # Adjust for header
+            y_min += header_height
+            y_max += header_height
+            
+            # Make sure coordinates are within bounds
+            x_min = max(0, x_min)
+            y_min = max(0, y_min)
+            x_max = min(w, x_max)
+            y_max = min(h, y_max)
+            
             label = det['label']
-            confidence = det['confidence']
+            conf = det['confidence']
             
             # Get color for this class
-            color = COLOR_PALETTE.get(label.lower(), COLOR_PALETTE['default'])
+            rgba_color = COLOR_PALETTE.get(label.lower(), COLOR_PALETTE['default'])
+            color = rgba_color[:3]  # BGR format
+            alpha = rgba_color[3]   # Transparency value
             
-            # Draw slightly transparent polygon for each object
-            pts = np.array([[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]], np.int32)
-            cv2.fillPoly(overlay, [pts], color)
+            # Create a more visible detection box (semi-transparent fill)
+            overlay = result_img.copy()
+            cv2.rectangle(overlay, (x_min, y_min), (x_max, y_max), color, -1)
             
-            # Draw bounding box
-            box_thickness = 2
-            cv2.rectangle(img, (x_min, y_min), (x_max, y_max), color, box_thickness)
+            # Apply alpha blending for the fill
+            cv2.addWeighted(
+                overlay, 
+                alpha, 
+                result_img, 
+                1 - alpha, 
+                0, 
+                result_img
+            )
             
-            # Prepare label text
-            label_text = f"{label} {confidence:.2f}"
-            
-            # Draw filled rectangle for the label
-            label_size, _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            # Draw a solid border (more visible)
+            border_thickness = max(2, int(3 * base_font_scale))
             cv2.rectangle(
-                img,
-                (x_min, y_min - label_size[1] - 5),
-                (x_min + label_size[0] + 5, y_min),
-                color,
-                -1
+                result_img, 
+                (x_min, y_min), 
+                (x_max, y_max), 
+                color, 
+                border_thickness
             )
             
-            # Draw the label text in white
+            # Create an improved label with better visibility
+            label_text = f"{label} {conf:.2f}"
+            font_scale = base_font_scale * 0.9  # Slightly larger font
+            thickness = max(1, int(base_font_scale * 1.2))  # Thicker text
+            
+            # Get text size for the label
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label_text, 
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                font_scale, 
+                thickness
+            )
+            
+            # Add padding to label background
+            padding = int(6 * base_font_scale)
+            
+            # Make sure label doesn't go above the image
+            label_y_min = max(header_height, y_min - text_height - padding * 2)
+            
+            # Position label at top of bounding box with solid background
+            label_bg = np.array([
+                [x_min, label_y_min],
+                [x_min + text_width + padding * 2, label_y_min],
+                [x_min + text_width + padding * 2, label_y_min + text_height + padding * 2],
+                [x_min, label_y_min + text_height + padding * 2]
+            ], np.int32)
+            
+            # Draw solid label background (no transparency)
+            cv2.fillPoly(result_img, [label_bg], color)
+            
+            # Add a white border around the label for better visibility
+            cv2.polylines(result_img, [label_bg], True, (255, 255, 255), 1)
+            
+            # Draw label text in white with improved visibility
             cv2.putText(
-                img,
+                result_img,
                 label_text,
-                (x_min + 3, y_min - 4),
+                (x_min + padding, label_y_min + text_height + padding),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                font_scale,
                 (255, 255, 255),
-                1
+                thickness
             )
         
-        # Blend overlay with the original image for a semi-transparent effect
-        alpha = 0.3  # Transparency level
-        cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+        # Add a footer with model info
+        footer_height = int(40 * base_font_scale)
+        footer_bar = np.zeros((footer_height, w, 3), dtype=np.uint8)
+        footer_bar[:] = header_bg_color
         
-        # Add footer with model info
-        model_info = f"Model: {MODEL_CONFIG[detector_type][list(MODEL_CONFIG[detector_type].keys())[0]]['description']}"
-        footer_y = h - 20
+        # Add accent line at top of footer
+        footer_bar[:accent_height, :] = header_accent
         
-        # Add a footer bar
-        cv2.rectangle(img, (0, h-40), (w, h), header_bg_color, -1)
-        cv2.putText(img, model_info, (10, footer_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, header_text_color, 1)
-        cv2.putText(img, f"Objects: {len(detections)}", (w-150, footer_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, header_text_color, 1)
+        # Add model info
+        model_name = list(MODEL_CONFIG[detector_type].keys())[0]
+        detection_count = f"Detections: {len(detections)}"
         
-        return img
-    
-    def _create_classification_visualization(self, input_path, output_path, detector_type, main_class, predictions):
-        """Create a visualization for classification results"""
-        try:
-            # Read input image
-            img = cv2.imread(input_path)
-            if img is None:
-                img = np.zeros((400, 600, 3), dtype=np.uint8)
-            
-            h, w = img.shape[:2]
-            
-            # Make a clean copy
-            result_img = img.copy()
-            
-            # Add header with classification type
-            header_text = "Damage Assessment" if detector_type == "damage_assessment" else "Emergency Recognition"
-            cv2.rectangle(result_img, (0, 0), (w, 40), (40, 40, 40), -1)
-            cv2.putText(result_img, header_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-            
-            # Add a semi-transparent overlay with the classification result
-            overlay = img.copy()
-            
-            # Determine color based on class
-            if detector_type == "damage_assessment":
-                if main_class == "no_damage":
-                    color = (0, 255, 0)  # Green
-                elif main_class == "minor_damage":
-                    color = (0, 255, 255)  # Yellow
-                elif main_class == "major_damage":
-                    color = (0, 128, 255)  # Orange
-                else:  # destroyed
-                    color = (0, 0, 255)  # Red
-            else:  # emergency recognition
-                if main_class == "normal":
-                    color = (0, 255, 0)  # Green
-                elif main_class == "fire":
-                    color = (0, 0, 255)  # Red
-                elif main_class == "flood":
-                    color = (255, 0, 0)  # Blue
-                elif main_class == "explosion":
-                    color = (0, 0, 180)  # Dark red
-                else:
-                    color = (128, 0, 128)  # Purple
-            
-            # Create a colored border
-            border_size = 20
-            cv2.rectangle(result_img, (0, 0), (w, h), color, border_size)
-            
-            # Add classification label
-            formatted_class = main_class.replace('_', ' ').title()
-            conf = predictions[main_class]
-            label_text = f"{formatted_class} ({conf:.1%})"
-            
-            # Add a bottom info panel with classification results
-            cv2.rectangle(result_img, (0, h-100), (w, h), (40, 40, 40), -1)
-            cv2.putText(result_img, "Classification:", (20, h-70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-            cv2.putText(result_img, label_text, (20, h-30), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 2)
-            
-            # Add confidence bar
-            bar_length = int(w - 40)
-            bar_height = 20
-            bar_x = 20
-            bar_y = h - 130
-            
-            # Draw background
-            cv2.rectangle(result_img, (bar_x, bar_y), (bar_x + bar_length, bar_y + bar_height), (100, 100, 100), -1)
-            
-            # Draw filled portion
-            filled_length = int(bar_length * conf)
-            cv2.rectangle(result_img, (bar_x, bar_y), (bar_x + filled_length, bar_y + bar_height), color, -1)
-            
-            cv2.imwrite(output_path, result_img)
-            
-        except Exception as e:
-            logger.error(f"Error creating classification visualization: {str(e)}")
-            logger.error(traceback.format_exc())
+        # Add model info to footer
+        cv2.putText(
+            footer_bar,
+            f"Model: {model_name}",
+            (int(20 * base_font_scale), int(footer_height * 0.6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            base_font_scale * 0.7,
+            (255, 255, 255),  # Brighter text color
+            1
+        )
+        
+        # Add detection count to right side
+        (text_width, _), _ = cv2.getTextSize(
+            detection_count, 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            base_font_scale * 0.7, 
+            1
+        )
+        
+        cv2.putText(
+            footer_bar,
+            detection_count,
+            (w - text_width - int(20 * base_font_scale), int(footer_height * 0.6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            base_font_scale * 0.7,
+            (255, 255, 255),  # Brighter text color
+            1
+        )
+        
+        # Add the footer to the result image
+        result_img = np.vstack([result_img, footer_bar])
+        
+        return result_img
 
 # Singleton instance
 model_service = ModelService()
-
 
 def process_marker_file(marker_file, detector_types: List[str]) -> List[Detection]:
     """
@@ -631,11 +609,18 @@ def process_marker_file(marker_file, detector_types: List[str]) -> List[Detectio
             logger.warning(f"Skipping non-processable file: {file_path} (format: {file_ext})")
             return []
         
+        # Check for existing detections and remove if requested
+        existing_detections = marker_file.detections.filter(detector_type__in=detector_types)
+        if existing_detections.exists():
+            logger.info(f"Found {existing_detections.count()} existing detections, deleting them for reprocessing")
+            existing_detections.delete()
+        
         # Process with model service
         try:
             logger.info(f"Calling model service for file {marker_file.id}")
+            start_time = time.time()
             results = model_service.process_image(file_path, detector_types)
-            logger.info(f"Got results for detector types: {list(results.keys())}")
+            logger.info(f"Model processing completed in {time.time() - start_time:.2f}s for detector types: {list(results.keys())}")
         except Exception as e:
             logger.error(f"Error in model processing: {str(e)}")
             logger.error(traceback.format_exc())
@@ -657,58 +642,32 @@ def process_marker_file(marker_file, detector_types: List[str]) -> List[Detectio
                 
                 result = result_data['result']
                 
-                # Handle different detector types
-                if detector_type in ['object_detection', 'military_detection']:
-                    # Store overall summary
-                    detection.summary = result.get('summary', '')
-                    
-                    # Store the relative path for serving via URL
-                    if 'relative_path' in result:
-                        detection.image_path = result['relative_path']
-                        
-                    detection.save()
-                    logger.info(f"Saved detection ID {detection.id}")
-                    
-                    # Store individual detections
-                    for det in result.get('detections', []):
-                        object_detection = ObjectDetection.objects.create(
-                            detection=detection,
-                            label=det['label'],
-                            confidence=det['confidence'],
-                            x_min=det['bbox'][0],
-                            y_min=det['bbox'][1],
-                            x_max=det['bbox'][2],
-                            y_max=det['bbox'][3]
-                        )
-                        logger.info(f"Created object detection {object_detection.id}: {det['label']}")
-                    
-                elif detector_type in ['damage_assessment', 'emergency_recognition']:
-                    # Store classification result
-                    detection.summary = f"Classified as {result['class']} with {result['confidence']:.2f} confidence"
-                    
-                    # Store the relative path for serving via URL
-                    if 'relative_path' in result:
-                        detection.image_path = result['relative_path']
-                        
-                    detection.save()
-                    logger.info(f"Saved detection ID {detection.id}")
-                    
-                    classification = ClassificationResult.objects.create(
+                # Store overall summary
+                detection.summary = result.get('summary', '')
+                
+                # Store the relative path for serving via URL
+                if 'relative_path' in result:
+                    detection.image_path = result['relative_path']
+                
+                # Store inference time if available
+                if 'inference_time' in result:
+                    detection.metadata = {'inference_time': result['inference_time']}
+                
+                detection.save()
+                logger.info(f"Saved detection ID {detection.id}")
+                
+                # Store individual detections
+                for det in result.get('detections', []):
+                    object_detection = ObjectDetection.objects.create(
                         detection=detection,
-                        label=result['class'],
-                        confidence=result['confidence']
+                        label=det['label'],
+                        confidence=det['confidence'],
+                        x_min=det['bbox'][0],
+                        y_min=det['bbox'][1],
+                        x_max=det['bbox'][2],
+                        y_max=det['bbox'][3]
                     )
-                    logger.info(f"Created classification {classification.id}: {result['class']}")
-                    
-                    # Store all prediction confidences if available
-                    if 'all_predictions' in result:
-                        for label, conf in result['all_predictions'].items():
-                            if label != result['class']:  # Main prediction already stored
-                                ClassificationResult.objects.create(
-                                    detection=detection,
-                                    label=label,
-                                    confidence=conf
-                                )
+                    logger.info(f"Created object detection {object_detection.id}: {det['label']} ({det['confidence']:.2f})")
                 
                 detection_objects.append(detection)
                 
@@ -722,7 +681,6 @@ def process_marker_file(marker_file, detector_types: List[str]) -> List[Detectio
         logger.error(f"Error in process_marker_file: {str(e)}")
         logger.error(traceback.format_exc())
         return []
-
 
 def process_marker(marker) -> Dict[str, int]:
     """
@@ -752,14 +710,15 @@ def process_marker(marker) -> Dict[str, int]:
     
     if not detector_types:
         logger.info(f"No AI detection options enabled for marker {marker.id}")
-        return {'processed': 0, 'detections': 0, 'already_processed': 0}
+        return {'processed': 0, 'detections': 0, 'errors': 0}
     
     # Process all files
     processed_count = 0
     detection_count = 0
     error_count = 0
+    start_time = time.time()
     
-    # Simplified approach: process all files without checking for existing detections
+    # Process all files
     for marker_file in marker.files.all():
         try:
             file_path = marker_file.file.path
@@ -784,10 +743,14 @@ def process_marker(marker) -> Dict[str, int]:
             logger.error(traceback.format_exc())
             error_count += 1
     
+    # Calculate total processing time
+    total_time = time.time() - start_time
+    
     result = {
         'processed': processed_count,
         'detections': detection_count,
-        'errors': error_count
+        'errors': error_count,
+        'processing_time': f"{total_time:.2f}s"
     }
     
     logger.info(f"Finished processing marker {marker.id}: {result}")

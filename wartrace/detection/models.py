@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from content.models import MarkerFile
 import os
+import json
 
 class Detection(models.Model):
     """
@@ -18,7 +19,7 @@ class Detection(models.Model):
     # Type of detection performed (object_detection, military_detection, etc.)
     detector_type = models.CharField(max_length=50)
     
-    # The specific model that was used (e.g., 'yolo11m', 'xbd_classifier')
+    # The specific model that was used (e.g., 'yolo11m', 'yolo11s_military')
     model_name = models.CharField(max_length=100)
     
     # Summary of detection results (e.g., "Found 5 objects: 2 persons, 3 vehicles")
@@ -26,6 +27,9 @@ class Detection(models.Model):
     
     # Path to the processed image (relative to MEDIA_URL)
     image_path = models.CharField(max_length=255, blank=True)
+    
+    # Optional metadata/attributes as JSON (inference time, settings used, etc.)
+    metadata = models.JSONField(null=True, blank=True)
     
     # Timestamp
     created_at = models.DateTimeField(auto_now_add=True)
@@ -58,9 +62,29 @@ class Detection(models.Model):
         return self.detector_type in ['object_detection', 'military_detection']
     
     @property
-    def is_classification(self):
-        """Check if this is a classification result"""
-        return self.detector_type in ['damage_assessment', 'emergency_recognition']
+    def inference_time(self):
+        """Return inference time from metadata if available"""
+        if self.metadata and 'inference_time' in self.metadata:
+            return self.metadata['inference_time']
+        return None
+    
+    @property
+    def total_objects(self):
+        """Return the total number of detected objects"""
+        return self.objects.count()
+    
+    @property
+    def object_classes(self):
+        """Return a dictionary of detected object classes with counts"""
+        class_counts = {}
+        for obj in self.objects.all():
+            class_counts[obj.label] = class_counts.get(obj.label, 0) + 1
+        return class_counts
+    
+    @property
+    def parent_marker(self):
+        """Return the parent marker"""
+        return self.marker_file.marker if self.marker_file else None
 
 
 class ObjectDetection(models.Model):
@@ -120,6 +144,16 @@ class ObjectDetection(models.Model):
     def center_y(self):
         """Calculate bounding box center Y coordinate"""
         return (self.y_min + self.y_max) / 2
+    
+    @property
+    def is_military(self):
+        """Check if this is a military object"""
+        military_classes = [
+            'camouflage_soldier', 'weapon', 'military_tank', 'military_truck', 
+            'military_vehicle', 'soldier', 'military_artillery', 'trench', 
+            'military_aircraft', 'military_warship'
+        ]
+        return self.label.lower() in military_classes
 
 
 class ClassificationResult(models.Model):
@@ -150,46 +184,6 @@ class ClassificationResult(models.Model):
         return f"{self.label} ({self.confidence:.2f})"
 
 
-class SegmentationMask(models.Model):
-    """
-    Represents a segmentation mask for pixel-level predictions.
-    """
-    # Link to the parent detection
-    detection = models.ForeignKey(
-        Detection, 
-        on_delete=models.CASCADE, 
-        related_name='segmentation_masks'
-    )
-    
-    # Class label that this mask represents
-    label = models.CharField(max_length=100)
-    
-    # Path to the segmentation mask image
-    mask_path = models.CharField(max_length=255)
-    
-    # Confidence score (0-1) of the segmentation
-    confidence = models.FloatField()
-    
-    # Optional metadata/attributes
-    metadata = models.JSONField(null=True, blank=True)
-    
-    def __str__(self):
-        return f"{self.label} mask for {self.detection}"
-    
-    @property
-    def mask_url(self):
-        """Return the full URL to the mask image"""
-        if not self.mask_path:
-            return None
-            
-        # Remove leading slash if present to make path joining work correctly
-        path = self.mask_path
-        if path.startswith('/'):
-            path = path[1:]
-            
-        return os.path.join(settings.MEDIA_URL, path)
-
-
 class DetectionConfig(models.Model):
     """
     Stores configuration information about available detection models.
@@ -216,8 +210,19 @@ class DetectionConfig(models.Model):
     # Configuration options for this detector type (stored as JSON)
     config = models.JSONField(default=dict, blank=True)
     
+    # Threshold for detections (0-1)
+    confidence_threshold = models.FloatField(default=0.25)
+    
+    # IOU threshold for non-maximum suppression (0-1)
+    iou_threshold = models.FloatField(default=0.45)
+    
     class Meta:
         ordering = ['order', 'detector_type']
     
     def __str__(self):
         return self.display_name
+    
+    @property
+    def get_config(self):
+        """Return the configuration as a dictionary"""
+        return self.config if isinstance(self.config, dict) else {}

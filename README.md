@@ -60,7 +60,7 @@
    - Date of observation
    - Source information
    - Category selection (military, infrastructure, hazard, residential)
-   - Supporting media (photos/videos)
+   - Supporting media (photos only)
 4. Choose visibility settings (public or private)
 5. Toggle AI analysis options if desired
 6. Click "Зберегти" (Save) to create the marker

@@ -8,6 +8,7 @@ class UserProfile(models.Model):
     CATEGORY_CHOICES = [
         ('soldier', 'Військовий(-а)'),
         ('volunteer', 'Волонтер(-ка)'),
+        ('both', "Волонтер(-ка) та військовий(-а)")
     ]
     category = models.CharField(max_length=9, choices=CATEGORY_CHOICES, blank=True, null=True)
     contacts = models.TextField(blank=True, null=True)

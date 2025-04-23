@@ -32,17 +32,10 @@ class UserRegistrationForm(forms.ModelForm):
 
     def clean_email(self):
         email = self.cleaned_data.get('email')
-        category = self.cleaned_data.get('category')
 
-        users_with_email = User.objects.filter(email=email)
-
-        for user in users_with_email:
-            try:
-                if user.profile.category == category:
-                    raise forms.ValidationError("Цей email вже зареєстровано для цієї категорії.")
-            except UserProfile.DoesNotExist:
-                continue
-
+        user = User.objects.filter(email=email)
+        if user:
+            raise forms.ValidationError("Цей email вже зареєстровано.")
         return email
 
     def clean_password2(self):

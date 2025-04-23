@@ -104,11 +104,6 @@
             {% endif %}
         </div>
 
-        <h2>Мої маркери</h2>
-        {% if not my_markers %}
-        <p>Поки нема маркерів</p>
-        {% endif %}
-
         <form method="post" action="{% url 'logout' %}">
             {% csrf_token %}
             <button type="submit">Вийти</button>

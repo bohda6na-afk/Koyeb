@@ -25,17 +25,20 @@
     <main>
         <div class="archive-section">
             <h2>Archive</h2>
-            {% if request_data %}
+            {% if both_request_data %}
+            {% for name, req_data in both_request_data %}
+            <h3>{{name}}</h3>
+            {% if req_data %}
             <table>
                 <thead>
                     <tr>
-                        <th>Title</th>
-                        <th>Description</th>
-                        <th>Price (грн)</th>
-                        <th>Status</th>
+                        <th>Заголовок</th>
+                        <th>Опис</th>
+                        <th>Ціна (грн)</th>
+                        <th>Статус</th>
                     </tr>
                 </thead>
-                {% for req in request_data %}
+                {% for req in req_data %}
                 <tbody>
                     <td>{{ req.name }}</td>
                     <td>{{ req.description }}</td>
@@ -45,8 +48,32 @@
                 {% endfor %}
             </table>
             {% else %}
-            <p>No requests yet.</p>
+            <p>Ще нема запитів.</p>
             {% endif %}
+            {% endfor %}
+        {% endif %}
+        {% if request_data %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Заголовок</th>
+                    <th>Опис</th>
+                    <th>Ціна (грн)</th>
+                    <th>Статус</th>
+                </tr>
+            </thead>
+            {% for req in request_data %}
+            <tbody>
+                <td>{{ req.name }}</td>
+                <td>{{ req.description }}</td>
+                <td>{{ req.aproximate_price }}</td>
+                <td>{{ req.get_status_display }}<br>{% if visitor.pk == req.volunteer.pk or visitor.pk == req.author.pk %}<a href="{% url 'chat:start_chat' req.id %}">Написати</a>{% endif %}</td>
+            </tbody>
+            {% endfor %}
+        </table>
+        {% elif not both_request_data %}
+        <p>Ще нема запитів.</p>
+        {% endif %}
         </div>
     </main>
 

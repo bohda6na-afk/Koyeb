@@ -15,5 +15,6 @@ urlpatterns = [
     path('bad_category/', views.bad_category, name='bad_category'),
     path('profile/<int:volunteer_id>', views.profile, name='profile'),
     path('submit/<int:req_id>', views.req_ready, name="req_ready"),
-    path('settings/', views.settings, name='settings')
+    path('settings/', views.settings, name='settings'),
+    path('change_category/', views.add_second_category, name='change_category')
 ]

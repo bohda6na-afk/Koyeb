@@ -19,7 +19,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'unsafe-secret-for-dev')
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ['*']  # або ['wartrace.koyeb.app'] після деплою
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')  # дозволяє змінювати через змінні середовища
 
 # Application definition
 INSTALLED_APPS = [
@@ -75,7 +75,7 @@ ASGI_APPLICATION = 'wartrace.asgi.application'
 
 # Database
 DATABASES = {
-    'default': dj_database_url.config(default=f'sqlite:///{BASE_DIR}/db.sqlite3')
+    'default': dj_database_url.config(default=os.environ.get('DATABASE_URL', 'postgres://localhost:5432/wartrace'))
 }
 
 # Password validation
